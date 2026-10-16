@@ -43,7 +43,21 @@
   // tile-snap detection since position tracking works normally on it.
   let wayland = false;
 
+  // A tiling compositor (Hyprland) manages the window: it ignores the
+  // window's own maximize request and has no minimize, so the window
+  // buttons are hidden and maximize goes through the compositor (see
+  // hyprland.rs). Resolved once at startup.
+  let tiling = false;
+
   async function updateSquared() {
+    if (tiling) {
+      // Only a free-floating window keeps the rounded corners/shadow - a
+      // tiled one sits flush against its neighbours and the screen edges.
+      const state = await invoke<{ floating: boolean; fullscreen: boolean } | null>("tiling_window_state").catch(() => null);
+      isMaximized = !!state?.fullscreen;
+      squared = !state || !state.floating || state.fullscreen;
+      return;
+    }
     try {
       const maximized = await appWindow.isMaximized();
       isMaximized = maximized;
@@ -80,7 +94,13 @@
     }
   }
 
+  function toggleMaximize() {
+    if (tiling) void invoke("toggle_window_maximized");
+    else void appWindow.toggleMaximize();
+  }
+
   onMount(async () => {
+    tiling = await invoke<boolean>("uses_tiling_wm").catch(() => false);
     wayland = await invoke<boolean>("is_wayland_session").catch(() => false);
     await updateSquared();
     unlistenResize = await appWindow.onResized(() => void updateSquared());
@@ -94,7 +114,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="titlebar" data-tauri-drag-region on:dblclick={() => appWindow.toggleMaximize()}>
+<div class="titlebar" data-tauri-drag-region on:dblclick={toggleMaximize}>
   <div class="brand" data-tauri-drag-region>
     <AppIcon size={16} />
     <span data-tauri-drag-region>Portus</span>
@@ -132,12 +152,13 @@
       <span>Settings</span>
     </button>
   </div>
+  {#if !tiling}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="window-controls" on:dblclick|stopPropagation>
     <button class="win-btn" aria-label="Minimize" on:click={() => appWindow.minimize()}>
       <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="9" x2="9" y2="9" stroke="currentColor" stroke-width="1.2" /></svg>
     </button>
-    <button class="win-btn" aria-label="Maximize" on:click={() => appWindow.toggleMaximize()}>
+    <button class="win-btn" aria-label="Maximize" on:click={toggleMaximize}>
       <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" stroke="currentColor" stroke-width="1.2" fill="none" /></svg>
     </button>
     <button class="win-btn close" aria-label="Close" on:click={() => appWindow.close()}>
@@ -147,6 +168,7 @@
       </svg>
     </button>
   </div>
+  {/if}
 </div>
 
 <style>
