@@ -20,6 +20,7 @@
   } from "../bridge";
   import { terminalAppearanceVersion } from "../terminalAppearance";
   import { looksLikeSudoPasswordPrompt } from "../sudoPasswordPrompt";
+  import { matchShortcut } from "../shortcuts";
   import {
     highlightTerminalOutput,
     setHighlightGreen,
@@ -32,6 +33,9 @@
   export let protocol: Protocol = "shell";
   export let options: SessionOptions = undefined;
   export let active = true;
+  /** The pane within the active tab that has keyboard focus - in a split
+   * tab every pane is `active`, but only one of them is `focused`. */
+  export let focused = true;
 
   const dispatch = createEventDispatcher<{
     state: SessionState;
@@ -46,6 +50,25 @@
   let sessionId: string | null = null;
   let sub: { unlisten(): Promise<void> } | null = null;
   let resizeObserver: ResizeObserver;
+  // Scroll indicator (see the styles below): a thin
+  // bar drawn here rather than a styled native scrollbar, since WebKitGTK
+  // doesn't repaint a ::-webkit-scrollbar when only a class changes. Shown
+  // only while scrolled up into history, like kitty's.
+  let scrolledBack = false;
+  let thumbTop = 0;
+  let thumbHeight = 0;
+  let viewportEl: HTMLElement | null = null;
+
+  function updateScrollIndicator() {
+    if (!viewportEl || !container) return;
+    const { scrollTop, scrollHeight, clientHeight } = viewportEl;
+    const scrollable = scrollHeight - clientHeight;
+    scrolledBack = scrollable > 1 && scrollTop < scrollable - 1;
+    if (!scrolledBack) return;
+    thumbHeight = Math.max(24, (clientHeight * clientHeight) / scrollHeight);
+    const offset = viewportEl.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    thumbTop = offset + (scrollTop / scrollable) * (clientHeight - thumbHeight);
+  }
   let resizeRaf: number | null = null;
   /** Persists across `data` events (not recreated per-chunk) so a multi-byte
    * UTF-8 character split across two chunks decodes correctly instead of
@@ -318,6 +341,9 @@
         term.selectAll();
         return false;
       }
+      // App shortcuts (see shortcuts.ts) are handled by App.svelte's window
+      // listener - don't also send them to the shell.
+      if (matchShortcut(event)) return false;
       return true;
     });
     term.open(container);
@@ -350,12 +376,21 @@
     // Resize propagation: the PTY (or remote protocol) must learn about
     // every grid change, not just the initial one — this is the classic bug
     // (resizing one side but not the other) the milestone calls out.
+    viewportEl = container.querySelector<HTMLElement>(".xterm-viewport");
+    viewportEl?.addEventListener("scroll", updateScrollIndicator, { passive: true });
+    term.onScroll(updateScrollIndicator);
+
     term.onResize(({ cols, rows }) => {
       if (sessionId) void resizeSession(sessionId, cols, rows);
     });
 
     resizeObserver = new ResizeObserver(() => scheduleFit());
     resizeObserver.observe(container);
+    // The padding can change without the container changing size (the
+    // keyboard-first layout's wider --terminal-padding, see App.svelte);
+    // watching xterm's own element catches that, so the grid refits
+    // instead of the bottom row ending up under the window edge.
+    if (term.element) resizeObserver.observe(term.element);
 
     void resizeSession(sessionId, term.cols, term.rows);
   });
@@ -368,6 +403,13 @@
     term?.dispose();
     cancelPendingPassword();
   });
+
+  /** Gives this pane's terminal keyboard focus - App.svelte calls it (via
+   * PaneGrid) after switching panes from the keyboard or closing the
+   * command palette. */
+  export function focus() {
+    term?.focus();
+  }
 
   // Becoming the visible tab can reveal a stale size (it was 0x0 while
   // hidden) — fit() corrects the cell grid, but xterm.js also positions a
@@ -382,8 +424,14 @@
   $: if (active && term && fitAddon) {
     requestAnimationFrame(() => {
       applyFit();
-      term.focus();
+      if (focused) term.focus();
     });
+  }
+
+  // Switching panes from the keyboard (see App.svelte's cyclePane) changes
+  // only which pane is focused, not which tab is active.
+  $: if (focused && active && term) {
+    requestAnimationFrame(() => term.focus());
   }
 
   // Fires once redundantly right after onMount creates `term` (harmless —
@@ -394,7 +442,11 @@
   }
 </script>
 
-<div class="terminal-host" class:hidden={!active} bind:this={container}></div>
+<div class="terminal-host" class:hidden={!active} bind:this={container}>
+  {#if scrolledBack}
+    <div class="scroll-thumb" style="top: {thumbTop}px; height: {thumbHeight}px"></div>
+  {/if}
+</div>
 
 {#if hostKeyMismatch}
   <Dialog label="SSH host key changed" width="440px" on:cancel={dismissHostKeyMismatch}>
@@ -426,6 +478,7 @@
      padding here made it fit one row more than the visible area holds and
      the bottom (prompt) row ended up clipped by the window edge. */
   .terminal-host {
+    position: relative;
     width: 100%;
     height: 100%;
     background: var(--surface-0);
@@ -435,7 +488,7 @@
   }
   .terminal-host :global(.xterm) {
     height: 100%;
-    padding: var(--space-2);
+    padding: var(--terminal-padding, var(--space-2));
   }
   /* xterm.js keeps a hidden <textarea> (its real keyboard-input target,
      positioned over the cursor cell for IME support) that's supposed to be
@@ -457,18 +510,26 @@
     outline: none !important;
     box-shadow: none !important;
   }
-  /* WebKitGTK (this app's Linux webview) renders an overlay scrollbar that
-     floats on top of content instead of reserving its own gutter the way a
-     classic scrollbar does - FitAddon sizes xterm's columns to the
-     viewport's full clientWidth, which under an overlay scrollbar never
-     shrinks to make room for one, so the floating scrollbar then sits
-     directly on top of (and makes unreadable) whatever text is in the
-     rightmost column or two while actively scrolling. scrollbar-gutter:
-     stable tells the engine to always reserve that space up front, the
-     same as a classic scrollbar would, so the scrollbar has its own lane
-     instead of overlapping text. */
+  /* Like kitty/Alacritty/Ghostty: no scrollbar while following output. The
+     native one is hidden - which also gives the text its full width, and
+     avoids WebKitGTK's overlay scrollbar floating over the rightmost
+     columns - and .scroll-thumb below shows only while scrolled back. */
   .terminal-host :global(.xterm-viewport) {
-    scrollbar-gutter: stable;
+    scrollbar-width: none;
+  }
+  .terminal-host :global(.xterm-viewport::-webkit-scrollbar) {
+    width: 0;
+    height: 0;
+  }
+  .scroll-thumb {
+    position: absolute;
+    right: 3px;
+    width: 4px;
+    border-radius: 2px;
+    background: var(--fg-tertiary);
+    opacity: 0.6;
+    pointer-events: none;
+    z-index: 5;
   }
 
   .title {

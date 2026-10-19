@@ -15,6 +15,10 @@
   // (maximized, fullscreen, or snapped to one half via the WM's own
   // tiling) - App.svelte squares the shell's corners off while this is true.
   export let squared = false;
+  // Keyboard-first layout (see App.svelte's keyboardUi): the bar isn't
+  // shown, but stays mounted, since it's also what tracks whether the
+  // window is tiled/maximized and drives `squared`.
+  export let hidden = false;
 
   const appWindow = getCurrentWindow();
   const dispatch = createEventDispatcher<{
@@ -114,7 +118,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="titlebar" data-tauri-drag-region on:dblclick={toggleMaximize}>
+<div class="titlebar" class:hidden data-tauri-drag-region on:dblclick={toggleMaximize}>
   <div class="brand" data-tauri-drag-region>
     <AppIcon size={16} />
     <span data-tauri-drag-region>Portus</span>
@@ -172,6 +176,9 @@
 </div>
 
 <style>
+  .titlebar.hidden {
+    display: none;
+  }
   .titlebar {
     height: var(--titlebar-height);
     flex-shrink: 0;

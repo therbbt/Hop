@@ -164,6 +164,11 @@ pub struct Settings {
     pub themes: Vec<Theme>,
     #[serde(default)]
     pub active_theme_id: Option<String>,
+    /// Keyboard-first layout (no title bar, buttons or sidebar; everything
+    /// through hotkeys and the command palette). `None` = automatic: on
+    /// under a tiling compositor (Hyprland), off everywhere else.
+    #[serde(default)]
+    pub keyboard_ui: Option<bool>,
 }
 
 impl Default for Settings {
@@ -174,6 +179,7 @@ impl Default for Settings {
             terminal_colors: TerminalColors::default(),
             themes: Vec::new(),
             active_theme_id: None,
+            keyboard_ui: None,
         }
     }
 }

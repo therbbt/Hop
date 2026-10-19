@@ -2,18 +2,38 @@
   import { createEventDispatcher } from "svelte";
   import RingMark from "./RingMark.svelte";
 
+  import { shortcutKeys, type ShortcutId } from "../shortcuts";
+
+  /** Keyboard-first layout: hotkeys to start from instead of buttons. */
+  export let keyboard = false;
+
   const dispatch = createEventDispatcher<{ newShell: void; newSsh: void; newSerial: void; newRdp: void }>();
+  const KEYBOARD_HINTS: Array<{ id: ShortcutId; label: string }> = [
+    { id: "palette", label: "Sessions and commands" },
+    { id: "newShell", label: "New local shell" },
+    { id: "newSession", label: "New session" },
+    { id: "shortcuts", label: "All shortcuts" },
+  ];
 </script>
 
 <div class="empty-main">
   <RingMark size={64} />
   <p class="title">No sessions open</p>
-  <div class="actions">
-    <button class="cta" on:click={() => dispatch("newSsh")}>Connect over SSH</button>
-    <button class="cta secondary" on:click={() => dispatch("newRdp")}>Connect over RDP</button>
-    <button class="cta secondary" on:click={() => dispatch("newSerial")}>Connect over serial</button>
-    <button class="cta secondary" on:click={() => dispatch("newShell")}>Open a local shell</button>
-  </div>
+  {#if keyboard}
+    <dl class="hints">
+      {#each KEYBOARD_HINTS as hint (hint.id)}
+        <dt>{shortcutKeys(hint.id)}</dt>
+        <dd>{hint.label}</dd>
+      {/each}
+    </dl>
+  {:else}
+    <div class="actions">
+      <button class="cta" on:click={() => dispatch("newSsh")}>Connect over SSH</button>
+      <button class="cta secondary" on:click={() => dispatch("newRdp")}>Connect over RDP</button>
+      <button class="cta secondary" on:click={() => dispatch("newSerial")}>Connect over serial</button>
+      <button class="cta secondary" on:click={() => dispatch("newShell")}>Open a local shell</button>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -30,6 +50,22 @@
     margin: 0;
     color: var(--fg-secondary);
     font-size: 13px;
+  }
+  .hints {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: var(--space-1) var(--space-4);
+    margin: 0;
+    font-size: 12px;
+  }
+  .hints dt {
+    font-family: var(--font-mono);
+    color: var(--fg-primary);
+    text-align: right;
+  }
+  .hints dd {
+    margin: 0;
+    color: var(--fg-tertiary);
   }
   .actions {
     display: flex;

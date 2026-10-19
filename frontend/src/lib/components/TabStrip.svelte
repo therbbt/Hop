@@ -216,9 +216,12 @@
     background: var(--surface-2);
     color: var(--fg-primary);
   }
+  /* Marked with an accent underline, like the keyboard-first layout's
+     slim tab line (SlimTabs.svelte), rather than a filled block. */
   .tab.active {
-    background: var(--surface-2);
+    background: transparent;
     color: var(--fg-primary);
+    box-shadow: inset 0 -2px 0 var(--accent);
   }
   .status-dot {
     width: 6px;

@@ -17,6 +17,9 @@
    * single-pane tab renders with zero extra chrome, identical to before
    * split panes existed. */
   export let showHeader: boolean;
+  /** Keyboard-first layout (see App.svelte): panes close with
+   * Ctrl+Shift+W there, so their headers have no close button. */
+  export let keyboard = false;
 
   export let onFocusPane: (id: string) => void;
   export let onClosePane: (id: string) => void;
@@ -38,6 +41,13 @@
    * opens a fresh session, so this only has to find the right instance. */
   export function reconnectPane(paneId: string) {
     void paneRefs[paneId]?.reconnect();
+  }
+
+  /** Moves keyboard focus to a pane's terminal (RDP panes take input
+   * through their canvas, so they're left as they are). */
+  export function focusPane(paneId: string) {
+    const ref = paneRefs[paneId];
+    if (ref && "focus" in ref) ref.focus();
   }
 
   // Pure percentage math, recomputed whenever the tree shape or sizes
@@ -65,17 +75,19 @@
           <div class="pane-header">
             <span class="pane-dot" data-state={pane.state} data-protocol={pane.protocol}></span>
             <span class="pane-title">{pane.title}</span>
-            <span
-              class="pane-close"
-              role="button"
-              tabindex="0"
-              aria-label="Close pane"
-              title="Close pane"
-              on:click|stopPropagation={() => onClosePane(paneId)}
-              on:keydown|stopPropagation={(e) => e.key === "Enter" && onClosePane(paneId)}
-            >
-              ×
-            </span>
+            {#if !keyboard}
+              <span
+                class="pane-close"
+                role="button"
+                tabindex="0"
+                aria-label="Close pane"
+                title="Close pane"
+                on:click|stopPropagation={() => onClosePane(paneId)}
+                on:keydown|stopPropagation={(e) => e.key === "Enter" && onClosePane(paneId)}
+              >
+                ×
+              </span>
+            {/if}
           </div>
         {/if}
         <div class="pane-body">
@@ -93,6 +105,7 @@
               protocol={pane.protocol}
               options={pane.options}
               {active}
+              focused={active && paneId === activePaneId}
               on:state={(e) => onPaneState(paneId, e.detail)}
               on:title={(e) => onPaneTitle(paneId, e.detail.title)}
               on:closed={() => onPaneClosed(paneId)}
