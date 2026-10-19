@@ -8,6 +8,7 @@ mod tray;
 use adapter::AppState;
 use rdp_state::RdpState;
 use sftp_state::SftpState;
+use tauri::Manager;
 
 pub fn run() {
     tracing_subscriber::fmt::init();
@@ -75,6 +76,16 @@ pub fn run() {
         ])
         .setup(|app| {
             tray::setup(app)?;
+            // tauri.conf.json's minimum size is wider than a half-screen
+            // tile on a laptop display, and Hyprland doesn't grow a tile to
+            // honour it - the webview stays at the minimum and is clipped
+            // to the tile, cutting off the window's edges. The compositor
+            // owns the size there, so drop the minimum.
+            if hyprland::on_hyprland() {
+                if let Some(window) = app.get_webview_window("main") {
+                    window.set_min_size(None::<tauri::Size>)?;
+                }
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

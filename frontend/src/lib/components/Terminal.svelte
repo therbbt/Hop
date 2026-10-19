@@ -420,10 +420,14 @@
 {/if}
 
 <style>
+  /* The inset lives on .xterm, not here: FitAddon reads this element's
+     computed height - which under box-sizing: border-box already includes
+     any padding set here - and only subtracts .xterm's own padding, so
+     padding here made it fit one row more than the visible area holds and
+     the bottom (prompt) row ended up clipped by the window edge. */
   .terminal-host {
     width: 100%;
     height: 100%;
-    padding: var(--space-2);
     background: var(--surface-0);
   }
   .terminal-host.hidden {
@@ -431,6 +435,7 @@
   }
   .terminal-host :global(.xterm) {
     height: 100%;
+    padding: var(--space-2);
   }
   /* xterm.js keeps a hidden <textarea> (its real keyboard-input target,
      positioned over the cursor cell for IME support) that's supposed to be
