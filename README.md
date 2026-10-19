@@ -54,6 +54,32 @@ trait in its own crate, and the on-disk config is a single hand-editable
 `config.json`; secrets are never written to it, only opaque keychain handles
 are.
 
+## Arch / Hyprland (e.g. Omarchy)
+
+There's no Arch package yet, so build and install for your user with:
+
+```bash
+sudo pacman -S --needed base-devel webkit2gtk-4.1 gtk3 librsvg libayatana-appindicator gnome-keyring
+./scripts/install-linux-local.sh   # installs to ~/.local; re-run to update
+```
+
+The in-app updater can't update this install (on Linux it only replaces
+AppImages), so re-run the script to update.
+
+Under Hyprland, Portus runs natively on Wayland and lets the compositor
+manage the window: the minimize/maximize/close buttons are hidden, a tiled
+window drops its rounded corners and shadow, and double-clicking the title
+bar maximizes through Hyprland. Hyprland doesn't let apps grab global
+hotkeys, so the built-in `Alt+T` doesn't work there; bind the hotkey in your
+Hyprland config to run `portus --toggle` instead, which shows or hides the
+running instance. Launching `portus` again while it's running
+brings the existing window forward. On Omarchy:
+
+```lua
+-- ~/.config/hypr/bindings.lua
+o.bind("ALT + T", "Portus", "~/.local/bin/portus --toggle")
+```
+
 ## Development
 
 Requires Rust, Node, and (on Linux) `webkit2gtk-4.1` plus a Secret

@@ -16,6 +16,10 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 const TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/tray-icon.png");
 const HOTKEY: &str = "Alt+T";
 
+/// `portus --toggle` shows/hides an already-running instance (see the
+/// single-instance plugin in lib.rs).
+pub const TOGGLE_FLAG: &str = "--toggle";
+
 /// Tracks whether the main window is currently shown, so the hotkey/tray
 /// can toggle instantly without re-querying the window — a window's own
 /// `is_visible()` has been observed to lag behind reality on some Linux/
@@ -30,7 +34,7 @@ fn hide_main_window(app: &AppHandle) {
     }
 }
 
-fn show_main_window(app: &AppHandle) {
+pub fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.set_focus();
@@ -38,7 +42,7 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
-fn toggle_main_window(app: &AppHandle) {
+pub fn toggle_main_window(app: &AppHandle) {
     if WINDOW_SHOWN.load(Ordering::SeqCst) {
         hide_main_window(app);
     } else {
@@ -61,7 +65,13 @@ pub fn global_shortcut_plugin() -> TauriPlugin<Wry> {
 /// Registers the hotkey with the OS, builds the tray icon, and rewires the
 /// main window's close button — call once from `Builder::setup`.
 pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    app.global_shortcut().register(HOTKEY)?;
+    // Non-fatal: the hotkey can be taken by another app, and on Wayland
+    // compositors like Hyprland a global grab never sees keys pressed in
+    // other windows anyway - there the compositor binds `portus --toggle`
+    // instead (see TOGGLE_FLAG). Either way the app should still start.
+    if let Err(err) = app.global_shortcut().register(HOTKEY) {
+        tracing::warn!("failed to register hotkey {HOTKEY}: {err}");
+    }
 
     let open_item = MenuItem::with_id(app, "open", "Open Portus", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
