@@ -391,8 +391,11 @@ const RULES: Rule[] = [
     // a bare ISO date (2026-09-17), an access-log date (17/Sep/2026), or an
     // `ls -l`-style one (Sep 17, or Jan  1  2024 for an older file — the
     // double space for a single-digit day is real `ls` output, which
-    // `\s+` already tolerates).
-    pattern: String.raw`\b(?<date>\d{4}-\d{2}-\d{2}|\d{1,2}/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}(?:,?\s+\d{4})?)\b`,
+    // `\s+` already tolerates). The `ls`-style forms take their time of
+    // day along with them (Sep 17 20:24, or eza's day-first 17 Sep 20:24):
+    // without the day-first form, "Sep 20" in "17 Sep 20:24" matched with
+    // the *hour* read as the day, splitting the timestamp in two.
+    pattern: String.raw`\b(?<date>\d{4}-\d{2}-\d{2}|\d{1,2}/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/\d{4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}(?:,?\s+\d{4}|\s+\d{2}:\d{2}(?::\d{2})?)?|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?:\s+\d{4}|\s+\d{2}:\d{2}(?::\d{2})?)?)\b`,
     render: (g) => sgr(90, g.date!),
   },
   {
@@ -487,14 +490,36 @@ const COMBINED_PATTERN = new RegExp(RULES.map((r) => r.pattern).join("|"), "gm")
 // contain e.g. a colon-and-digits SGR parameter) or split mid-sequence.
 const ANSI_ESCAPE_SEQUENCE = /\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-Z\\-_]/g;
 
-function highlightPlainText(segment: string): string {
+// A span's closing reset (see sgr) would otherwise also end whatever style
+// the program itself had active around it, leaving the rest of that text
+// uncolored — eza colors its whole "18 Oct 20:24" timestamp, and a span
+// inside it used to cut that color off for everything after it. So every
+// closing reset in a rendered span re-applies the surrounding style. Only
+// closing ones: a reset immediately followed by another escape is a span's
+// *leading* reset, whose whole point is to clear that style first.
+const CLOSING_RESET = /\x1b\[0m(?!\x1b\[)/g;
+
+function highlightPlainText(segment: string, surroundingStyle: string): string {
   if (!segment) return segment;
   COMBINED_PATTERN.lastIndex = 0;
   return segment.replace(COMBINED_PATTERN, (...args) => {
     const groups = args[args.length - 1] as Record<string, string | undefined>;
     const rule = RULES.find((r) => groups[r.detector] !== undefined);
-    return rule ? rule.render(groups) : args[0];
+    if (!rule) return args[0];
+    const rendered = rule.render(groups);
+    return surroundingStyle ? rendered.replace(CLOSING_RESET, `\x1b[0m${surroundingStyle}`) : rendered;
   });
+}
+
+/** The SGR state in effect after `escapeSequence`, given the state before
+ * it — kept as the sequences themselves, since replaying them is all that
+ * restoring it needs. Non-SGR sequences leave it unchanged. */
+function nextSurroundingStyle(style: string, escapeSequence: string): string {
+  const match = SGR_SEQUENCE.exec(escapeSequence);
+  if (!match || match[0] !== escapeSequence) return style;
+  const params = match[1];
+  if (params === "" || params === "0") return "";
+  return params.startsWith("0;") ? escapeSequence : style + escapeSequence;
 }
 
 /** Recolors IPs/ports/log levels/HTTP status codes/timestamps/URLs found in
@@ -582,14 +607,17 @@ function exceedsThroughputBudget(byteLength: number): boolean {
 function highlightWithinEscapedText(text: string): string {
   let result = "";
   let lastIndex = 0;
+  let surroundingStyle = "";
   ANSI_ESCAPE_SEQUENCE.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = ANSI_ESCAPE_SEQUENCE.exec(text))) {
-    result += highlightPlainText(text.slice(lastIndex, match.index));
-    result += fixLowContrastDircolors(match[0]);
+    result += highlightPlainText(text.slice(lastIndex, match.index), surroundingStyle);
+    const escapeSequence = fixLowContrastDircolors(match[0]);
+    result += escapeSequence;
+    surroundingStyle = nextSurroundingStyle(surroundingStyle, escapeSequence);
     lastIndex = match.index + match[0].length;
   }
-  result += highlightPlainText(text.slice(lastIndex));
+  result += highlightPlainText(text.slice(lastIndex), surroundingStyle);
   return result.replace(RESET_THEN_PREFIX, (_m, prefix: string) => `\x1b[0m/${sgr(33, prefix)}`);
 }
 
