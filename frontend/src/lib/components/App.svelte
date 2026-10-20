@@ -14,6 +14,7 @@
   import NewSessionDialog from "./NewSessionDialog.svelte";
   import SftpPanel from "./SftpPanel.svelte";
   import SettingsPanel from "./SettingsPanel.svelte";
+  import { THERBBT_COLORS, THERBBT_THEME_ID } from "../therbbtTheme";
   import ShortcutsPanel from "./ShortcutsPanel.svelte";
   import NewSessionButton from "./NewSessionButton.svelte";
   import SaveAsDialog from "./SaveAsDialog.svelte";
@@ -292,7 +293,7 @@
       sessions = config.sessions;
       groups = config.groups;
       applyTerminalFontVars(config.settings);
-      applyTerminalColorVars(config.settings.terminalColors);
+      applyTerminalColorVars(savedColors(config.settings));
     } catch {
       // No persisted config yet (first launch) — the rail just stays empty.
     }
@@ -306,6 +307,14 @@
     isWindows = (await invoke<string>("platform_name").catch(() => "unknown")) === "windows";
     tilingWm = await invoke<boolean>("uses_tiling_wm").catch(() => false);
   });
+
+  // Settings stores a copy of the active theme's colors, which goes stale
+  // when a built-in theme's colors change in a new version. The therbbt
+  // theme is fixed (not editable), so while it's active its current colors
+  // are used instead of that copy.
+  function savedColors(settings: HopConfig["settings"]) {
+    return settings.activeThemeId === THERBBT_THEME_ID ? THERBBT_COLORS : settings.terminalColors;
+  }
 
   function openSettingsPanel() {
     showSettingsPanel = true;
