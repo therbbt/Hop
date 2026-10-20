@@ -366,8 +366,8 @@
     <label class="field">
       <span>Port</span>
       <!-- svelte-ignore a11y_autofocus -->
-      <input type="text" bind:value={serialPortName} list="portus-new-session-serial-ports" placeholder="/dev/ttyUSB0" autofocus />
-      <datalist id="portus-new-session-serial-ports">
+      <input type="text" bind:value={serialPortName} list="hop-new-session-serial-ports" placeholder="/dev/ttyUSB0" autofocus />
+      <datalist id="hop-new-session-serial-ports">
         {#each availablePorts as port (port)}
           <option value={port}></option>
         {/each}
@@ -380,8 +380,8 @@
 
     <label class="field">
       <span>Baud rate</span>
-      <input type="number" bind:value={serialBaudRate} min="1" list="portus-new-session-baud-rates" />
-      <datalist id="portus-new-session-baud-rates">
+      <input type="number" bind:value={serialBaudRate} min="1" list="hop-new-session-baud-rates" />
+      <datalist id="hop-new-session-baud-rates">
         {#each commonBaudRates as rate (rate)}
           <option value={rate}></option>
         {/each}

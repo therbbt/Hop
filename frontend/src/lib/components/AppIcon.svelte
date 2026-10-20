@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The actual application icon (see app/portus/icons/portus-icon.svg) -
+  // The actual application icon (see app/hop/icons/hop-icon.svg) -
   // a dark tile with a ring and terminal ">" prompt/cursor cut through it.
   // Distinct from RingMark.svelte (the thin monochrome loading-spinner/
   // empty-state glyph) - this renders the real icon's own fixed colors,

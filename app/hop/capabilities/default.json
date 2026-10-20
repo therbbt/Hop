@@ -1,0 +1,19 @@
+{
+  "identifier": "default",
+  "description": "Capabilities for the main Hop window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
+    "core:event:allow-listen",
+    "core:event:allow-emit",
+    "updater:default",
+    "process:default",
+    "opener:default",
+    "dialog:default"
+  ]
+}

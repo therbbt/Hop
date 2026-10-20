@@ -1,0 +1,230 @@
+//! SFTP file transfer, layered over its own authenticated SSH connection
+//! (via `hop_ssh::connect`) rather than implementing `Session` itself —
+//! this is a file panel, not a terminal stream, so it gets its own
+//! request/response API instead of a byte pipe.
+
+use hop_ssh::{HostKeyVerifier, SshConnectOptions};
+use russh::client::Handle;
+use russh_sftp::client::SftpSession;
+use serde::Serialize;
+use thiserror::Error;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+#[derive(Debug, Error)]
+pub enum SftpError {
+    #[error(transparent)]
+    Connect(#[from] hop_core::session::SessionError),
+    #[error("ssh error: {0}")]
+    Ssh(#[from] russh::Error),
+    #[error("sftp error: {0}")]
+    Sftp(#[from] russh_sftp::client::error::Error),
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("refusing to use unsafe directory entry name: {0:?}")]
+    UnsafeEntryName(String),
+}
+
+/// A single directory entry's name is supposed to be exactly one path
+/// component — this rejects anything that isn't, before it ever reaches a
+/// `Path::join`. `Path::join` doesn't strip `..`/separators, so joining an
+/// unchecked name can walk straight out of the intended destination
+/// directory (classic zip-slip-style path traversal). On the download side
+/// this matters for real: `entry.name` comes straight from the *remote*
+/// server's own `SSH_FXP_READDIR` response, which is nothing more than a
+/// string the server chose to send - a malicious or compromised SFTP
+/// server can report a "file" named e.g. `"../../../../home/you/.ssh/
+/// authorized_keys"` and have it written there on download. A real,
+/// single-component name can only ever join into a direct child of the
+/// base directory, so refusing anything else is both correct and
+/// sufficient - no need to canonicalize-and-compare afterward.
+fn safe_entry_name(name: &str) -> Result<&str, SftpError> {
+    if name.is_empty() || name == "." || name == ".." || name.contains('/') || name.contains('\\') {
+        return Err(SftpError::UnsafeEntryName(name.to_string()));
+    }
+    Ok(name)
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirEntry {
+    pub name: String,
+    pub is_dir: bool,
+    pub size: u64,
+}
+
+/// Owns both the SFTP session and the SSH connection it runs over — the
+/// connection has to stay alive for exactly as long as the session does,
+/// since dropping the `Handle` tears down the channel underneath it.
+pub struct SftpClient {
+    session: SftpSession,
+    _handle: Handle<HostKeyVerifier>,
+}
+
+impl SftpClient {
+    pub async fn connect(options: &SshConnectOptions) -> Result<Self, SftpError> {
+        let handle = hop_ssh::connect(options, None).await?;
+        let channel = handle.channel_open_session().await?;
+        channel.request_subsystem(true, "sftp").await?;
+        let session = SftpSession::new(channel.into_stream()).await?;
+        Ok(Self { session, _handle: handle })
+    }
+
+    pub async fn list(&self, path: &str) -> Result<Vec<DirEntry>, SftpError> {
+        let mut entries: Vec<DirEntry> = self
+            .session
+            .read_dir(path)
+            .await?
+            .map(|entry| DirEntry {
+                name: entry.file_name(),
+                is_dir: entry.metadata().is_dir(),
+                size: entry.metadata().len(),
+            })
+            .collect();
+        // Directories first, then alphabetical within each group.
+        entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.cmp(&b.name)));
+        Ok(entries)
+    }
+
+    pub async fn read_file(&self, path: &str) -> Result<Vec<u8>, SftpError> {
+        let mut file = self.session.open(path).await?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).await?;
+        Ok(buf)
+    }
+
+    /// Streams straight from the remote file to a local one, rather than
+    /// buffering the whole thing into memory (`read_file` above) and
+    /// handing it to the frontend as one big `Vec<u8>` over the Tauri IPC
+    /// bridge — the shape `sftp_download_file` uses, paired with a native
+    /// save dialog on the frontend side so a download actually looks like
+    /// one (a real destination picker, not a blob-URL `<a download>` click
+    /// a webview may silently drop into some default folder with no
+    /// feedback at all).
+    pub async fn download_to_file(&self, remote_path: &str, local_path: &std::path::Path) -> Result<(), SftpError> {
+        let mut remote_file = self.session.open(remote_path).await?;
+        let mut local_file = tokio::fs::File::create(local_path).await?;
+        tokio::io::copy(&mut remote_file, &mut local_file).await?;
+        local_file.shutdown().await?;
+        Ok(())
+    }
+
+    /// Recursively mirrors a remote directory tree into a local one,
+    /// streaming each file through `download_to_file` rather than ever
+    /// holding more than one file's worth of buffered data at a time - same
+    /// reasoning as that function, just walked over every file in the tree
+    /// instead of one. Boxed/pinned because an `async fn` can't directly
+    /// call itself (the compiler would need to know its own future's size
+    /// up front, which a recursive call makes infinite) - this is the
+    /// standard way around that, not a case for pulling in a dependency
+    /// just for this one function.
+    pub fn download_dir_to<'a>(
+        &'a self,
+        remote_path: &'a str,
+        local_path: &'a std::path::Path,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), SftpError>> + Send + 'a>> {
+        Box::pin(async move {
+            tokio::fs::create_dir_all(local_path).await?;
+            for entry in self.list(remote_path).await? {
+                let name = safe_entry_name(&entry.name)?;
+                let remote_child = format!("{}/{name}", remote_path.trim_end_matches('/'));
+                let local_child = local_path.join(name);
+                if entry.is_dir {
+                    self.download_dir_to(&remote_child, &local_child).await?;
+                } else {
+                    self.download_to_file(&remote_child, &local_child).await?;
+                }
+            }
+            Ok(())
+        })
+    }
+
+    /// Streams straight from a local file to the remote one, the upload
+    /// mirror of `download_to_file` above — same reasoning applies in
+    /// reverse. A byte-array upload used to buffer the whole file into a
+    /// `Vec<u8>` here and, worse, cross the Tauri IPC bridge as a JS
+    /// `Array.from(Uint8Array)` on the frontend side first, which alone
+    /// multiplies a file that size several times over (every byte becomes
+    /// its own boxed JS number) before Rust ever sees it — that's what was
+    /// actually exhausting memory on a multi-GB upload, not this end.
+    pub async fn upload_from_file(&self, local_path: &std::path::Path, remote_path: &str) -> Result<(), SftpError> {
+        let mut local_file = tokio::fs::File::open(local_path).await?;
+        let mut remote_file = self.session.create(remote_path).await?;
+        tokio::io::copy(&mut local_file, &mut remote_file).await?;
+        remote_file.shutdown().await?;
+        Ok(())
+    }
+
+    /// Recursively mirrors a local directory tree into a remote one, the
+    /// upload mirror of `download_dir_to` above — same reasoning applies in
+    /// reverse (streams one file at a time via `upload_from_file`, boxed/
+    /// pinned for the same self-recursion reason `download_dir_to`'s own
+    /// doc comment explains). `create_dir`'s result is ignored rather than
+    /// propagated: a subdirectory that already exists remotely would
+    /// otherwise fail the whole upload, and any *other* reason it couldn't
+    /// be created (permissions, etc.) surfaces naturally anyway the moment
+    /// a file tries to upload into it.
+    pub fn upload_dir_from<'a>(
+        &'a self,
+        local_path: &'a std::path::Path,
+        remote_path: &'a str,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), SftpError>> + Send + 'a>> {
+        Box::pin(async move {
+            let _ = self.session.create_dir(remote_path).await;
+            let mut entries = tokio::fs::read_dir(local_path).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                // The OS already guarantees a single read_dir entry's own
+                // file_name() can't contain a separator, so this can't
+                // actually trip here the way the download side's remote-
+                // controlled names can - kept anyway for the same defense-
+                // in-depth reason as everywhere else a boundary is checked
+                // even when one side of it is currently trusted.
+                let name = safe_entry_name(&entry.file_name().to_string_lossy())?.to_string();
+                let remote_child = format!("{}/{name}", remote_path.trim_end_matches('/'));
+                let local_child = entry.path();
+                if entry.file_type().await?.is_dir() {
+                    self.upload_dir_from(&local_child, &remote_child).await?;
+                } else {
+                    self.upload_from_file(&local_child, &remote_child).await?;
+                }
+            }
+            Ok(())
+        })
+    }
+
+    pub async fn remove_file(&self, path: &str) -> Result<(), SftpError> {
+        self.session.remove_file(path).await?;
+        Ok(())
+    }
+
+    pub async fn create_dir(&self, path: &str) -> Result<(), SftpError> {
+        self.session.create_dir(path).await?;
+        Ok(())
+    }
+
+    pub async fn remove_dir(&self, path: &str) -> Result<(), SftpError> {
+        self.session.remove_dir(path).await?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn safe_entry_name_accepts_a_plain_single_component() {
+        assert_eq!(safe_entry_name("hello.txt").unwrap(), "hello.txt");
+        assert_eq!(safe_entry_name("sub-dir").unwrap(), "sub-dir");
+    }
+
+    #[test]
+    fn safe_entry_name_rejects_traversal_and_separators() {
+        assert!(safe_entry_name("../../../etc/passwd").is_err());
+        assert!(safe_entry_name("..").is_err());
+        assert!(safe_entry_name(".").is_err());
+        assert!(safe_entry_name("").is_err());
+        assert!(safe_entry_name("a/b").is_err());
+        assert!(safe_entry_name("a\\b").is_err());
+        assert!(safe_entry_name("/etc/passwd").is_err());
+    }
+}

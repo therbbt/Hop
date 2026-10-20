@@ -1,7 +1,7 @@
 name: Release
 
 # Triggered by pushing a version tag (e.g. bump the version in
-# frontend/package.json, app/portus/tauri.conf.json, AND the workspace
+# frontend/package.json, app/hop/tauri.conf.json, AND the workspace
 # Cargo.toml's [workspace.package].version, commit, then
 # `git tag v1.2.0 && git push origin v1.2.0`) - builds signed installers for
 # Windows and Linux and publishes them as a draft GitHub Release. The
@@ -44,14 +44,14 @@ jobs:
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           PKG_VERSION=$(jq -r .version frontend/package.json)
-          TAURI_VERSION=$(jq -r .version app/portus/tauri.conf.json)
+          TAURI_VERSION=$(jq -r .version app/hop/tauri.conf.json)
           CARGO_VERSION=$(grep -m1 '^version' Cargo.toml | sed -E 's/version *= *"(.*)"/\1/')
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
             echo "::error::Tag $GITHUB_REF_NAME (version $TAG_VERSION) doesn't match frontend/package.json's version ($PKG_VERSION)"
             exit 1
           fi
           if [ "$TAG_VERSION" != "$TAURI_VERSION" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME (version $TAG_VERSION) doesn't match app/portus/tauri.conf.json's version ($TAURI_VERSION)"
+            echo "::error::Tag $GITHUB_REF_NAME (version $TAG_VERSION) doesn't match app/hop/tauri.conf.json's version ($TAURI_VERSION)"
             exit 1
           fi
           if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
@@ -82,9 +82,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          projectPath: app/portus
+          projectPath: app/hop
           tagName: ${{ github.ref_name }}
-          releaseName: 'Portus ${{ github.ref_name }}'
+          releaseName: 'Hop ${{ github.ref_name }}'
           releaseDraft: true
           generateReleaseNotes: true
 
@@ -124,9 +124,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          projectPath: app/portus
+          projectPath: app/hop
           tagName: ${{ github.ref_name }}
-          releaseName: 'Portus ${{ github.ref_name }}'
+          releaseName: 'Hop ${{ github.ref_name }}'
           releaseDraft: true
           generateReleaseNotes: true
           args: --bundles deb,rpm

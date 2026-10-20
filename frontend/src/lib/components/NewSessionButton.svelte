@@ -14,7 +14,7 @@
 <style>
   /* Matches FlashPad's ActionToolbar .toolbar-btn exactly — not just shape
      (icon + label, 22px tall) but tier: FlashPad's --muted/--panel-2 map
-     to Portus's --fg-secondary/--surface-2, NOT --fg-tertiary/--surface-3
+     to Hop's --fg-secondary/--surface-2, NOT --fg-tertiary/--surface-3
      (those are a shade dimmer/lighter and were the actual reason this
      looked off — same shape, wrong tier). */
   .toolbar-btn {

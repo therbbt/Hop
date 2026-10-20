@@ -1,0 +1,17 @@
+<svg width="48" height="48" viewBox="0 0 48 48" role="img" aria-label="Hop logo" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="hop-tile"><rect x="2" y="2" width="44" height="44" rx="12"/></clipPath>
+  </defs>
+  <rect x="2" y="2" width="44" height="44" rx="12" fill="#26262c"/>
+  <g clip-path="url(#hop-tile)">
+    <circle cx="24" cy="25" r="15.53" fill="none" stroke="#fafafa" stroke-width="4.6"/>
+    <g fill="none" stroke="#26262c" stroke-width="10.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16.8 15.5 L27.5 25 L16.8 34.5"/>
+      <path d="M31.5 34.5 L40.5 34.5"/>
+    </g>
+    <g fill="none" stroke="#fafafa" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16.8 15.5 L27.5 25 L16.8 34.5"/>
+      <path d="M31.5 34.5 L40.5 34.5"/>
+    </g>
+  </g>
+</svg>

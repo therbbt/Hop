@@ -1,4 +1,4 @@
-# Portus
+# Hop
 
 A lightweight, cross-platform, multi-protocol connection manager and
 terminal. One window, tabbed sessions over SSH, serial, and a local shell,
@@ -37,18 +37,18 @@ RDP input forwarding, and host groups/folders in the sidebar.
 ## Layout
 
 ```
-crates/portus-core     the Session trait, event/command types, config, keychain
-crates/portus-shell     portable-pty: local shell Session
-crates/portus-ssh       russh: SSH Session + host-key (TOFU) verification
-crates/portus-serial    serialport: serial Session
-crates/portus-sftp      SFTP over an SSH session
-crates/portus-rdp       ironrdp: view-only RDP client
-crates/portus-telnet    telnet Session (scaffolded, not yet implemented)
-app/portus              Tauri app: commands, event bridge, window
-frontend/               Svelte + xterm.js
+crates/hop-core    the Session trait, event/command types, config, keychain
+crates/hop-shell   portable-pty: local shell Session
+crates/hop-ssh     russh: SSH Session + host-key (TOFU) verification
+crates/hop-serial  serialport: serial Session
+crates/hop-sftp    SFTP over an SSH session
+crates/hop-rdp     ironrdp: view-only RDP client
+crates/hop-telnet  telnet Session (scaffolded, not yet implemented)
+app/hop            Tauri app: commands, event bridge, window
+frontend/          Svelte + xterm.js
 ```
 
-The app crate only ever depends on `portus-core`'s `Session` trait — never on
+The app crate only ever depends on `hop-core`'s `Session` trait — never on
 a protocol crate's internals directly. Every protocol lives behind that
 trait in its own crate, and the on-disk config is a single hand-editable
 `config.json`; secrets are never written to it, only opaque keychain handles
@@ -66,7 +66,7 @@ sudo pacman -S --needed base-devel webkit2gtk-4.1 gtk3 librsvg libayatana-appind
 The in-app updater can't update this install (on Linux it only replaces
 AppImages), so re-run the script to update.
 
-Under Hyprland, Portus runs natively on Wayland, lets the compositor
+Under Hyprland, Hop runs natively on Wayland, lets the compositor
 manage the window, and switches to a keyboard-first layout: no title bar,
 buttons or sidebar, just the terminal and a slim tab line once two or more
 tabs are open. Everything is a hotkey (`Ctrl+Shift+H` lists them), and
@@ -75,13 +75,13 @@ tabs and every action, including managing sessions and folders. Settings →
 Terminal → Keyboard-first layout turns it on or off on any desktop. A tiled
 window drops its rounded corners and shadow. Hyprland doesn't let apps grab global
 hotkeys, so the built-in `Alt+T` doesn't work there; bind the hotkey in your
-Hyprland config to run `portus --toggle` instead, which shows or hides the
-running instance. Launching `portus` again while it's running
+Hyprland config to run `hop --toggle` instead, which shows or hides the
+running instance. Launching `hop` again while it's running
 brings the existing window forward. On Omarchy:
 
 ```lua
 -- ~/.config/hypr/bindings.lua
-o.bind("ALT + T", "Portus", "~/.local/bin/portus --toggle")
+o.bind("ALT + T", "Hop", "~/.local/bin/hop --toggle")
 ```
 
 ## Development
@@ -94,7 +94,7 @@ npm install --prefix frontend
 npm run tauri --prefix frontend -- dev
 ```
 
-(`tauri.conf.json` lives in `app/portus`, not next to `frontend/package.json`,
+(`tauri.conf.json` lives in `app/hop`, not next to `frontend/package.json`,
 so the `tauri` script `cd`s there before invoking the CLI — that's also why
 a bare `npx tauri dev` from `frontend/` won't find the config.)
 

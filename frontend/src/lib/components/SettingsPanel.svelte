@@ -26,7 +26,7 @@
     cancel: void;
   }>();
 
-  // Portus's own default ANSI palette, not a generic stock one — must match
+  // Hop's own default ANSI palette, not a generic stock one — must match
   // tokens.css's --ansi-* defaults exactly, for both the dark and light
   // media blocks there (see the comments in tokens.css for why each color
   // is what it is). Used both to pre-fill an unset swatch and, on save, to
@@ -120,7 +120,7 @@
       ? LIGHT_DEFAULT_COLORS
       : DARK_DEFAULT_COLORS;
 
-  // Portus's second built-in theme — therbbt's own branding (dark backdrop,
+  // Hop's second built-in theme — therbbt's own branding (dark backdrop,
   // hot-pink signature color, cyan secondary accent), restrained rather
   // than a wall of distinct saturated hues: pink marks "this is a live
   // session" (prompt, sshIndicator, URLs), cyan marks "this is a place"
@@ -303,7 +303,7 @@
     {
       // The app's own UI chrome, not terminal text — everything above this
       // point changes what shows up *inside* a terminal; everything here
-      // changes Portus itself. Kept in the same theme/swatch list anyway
+      // changes Hop itself. Kept in the same theme/swatch list anyway
       // (see TerminalColors's own doc comment in bridge.ts) rather than a
       // separate system, so one theme covers both together.
       title: "App Interface",
@@ -337,7 +337,7 @@
   // outside the theme picker. This id is a plain sentinel, never a real
   // theme's (those are crypto.randomUUID()), so it can never collide.
   const DEFAULT_THEME_ID = "default";
-  // Portus's second built-in theme, pinned right after Default - same
+  // Hop's second built-in theme, pinned right after Default - same
   // fixed/not-deletable treatment, just resolving to THERBBT_COLORS
   // instead of DEFAULT_COLORS. A user can still freely create their own
   // themes on top of either one via "New theme…", same as always.
@@ -386,7 +386,7 @@
 
   // Custom popup dropdown, not a native <select> — same reasoning as
   // FolderSelect.svelte: a native select's open option list always uses
-  // the OS's own accent color for hover/selection, clashing with Portus's
+  // the OS's own accent color for hover/selection, clashing with Hop's
   // own accent no matter what CSS is applied to the closed control.
   let themeMenuOpen = false;
   let themeTriggerEl: HTMLButtonElement;
@@ -663,7 +663,7 @@
         <section class="card">
           <p class="hint">
             Only changes this machine's config — never shared or synced anywhere. Mostly text inside a terminal;
-            "App Interface" below is the exception — those change Portus's own chrome, not terminal text.
+            "App Interface" below is the exception — those change Hop's own chrome, not terminal text.
           </p>
 
           <div class="theme-row">
@@ -791,7 +791,7 @@
       {:else}
         <section class="card">
           <div class="update-row">
-            <span>{appVersion ? `Version ${appVersion}` : "Portus"}</span>
+            <span>{appVersion ? `Version ${appVersion}` : "Hop"}</span>
             <button class="btn" disabled={checkingForUpdate} on:click={checkForUpdates}>
               {checkingForUpdate ? "Checking…" : "Check for updates"}
             </button>
@@ -953,7 +953,7 @@
 
   /* Matches FolderSelect.svelte's own dropdown exactly — a plain trigger
      button + popup list rather than a native <select>, so the open menu's
-     hover/selected highlight uses Portus's own accent instead of the OS's. */
+     hover/selected highlight uses Hop's own accent instead of the OS's. */
   .theme-picker {
     position: relative;
     flex: 1;

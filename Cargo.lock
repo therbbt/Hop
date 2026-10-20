@@ -2550,6 +2550,140 @@ dependencies = [
 ]
 
 [[package]]
+name = "hop"
+version = "0.1.6"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "hop-core",
+ "hop-rdp",
+ "hop-serial",
+ "hop-sftp",
+ "hop-shell",
+ "hop-ssh",
+ "hop-telnet",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-updater",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "hop-core"
+version = "0.1.6"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "directories",
+ "keyring",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "hop-rdp"
+version = "0.1.6"
+dependencies = [
+ "base64 0.22.1",
+ "hop-core",
+ "image",
+ "ironrdp",
+ "ironrdp-blocking",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sspi",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-rustls",
+ "tracing",
+ "x509-cert 0.3.0",
+]
+
+[[package]]
+name = "hop-serial"
+version = "0.1.6"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "hop-core",
+ "serde",
+ "serde_json",
+ "serialport",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "hop-sftp"
+version = "0.1.6"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "hop-core",
+ "hop-ssh",
+ "russh",
+ "russh-sftp",
+ "serde",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "hop-shell"
+version = "0.1.6"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "hop-core",
+ "portable-pty",
+ "serde",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "hop-ssh"
+version = "0.1.6"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "hop-core",
+ "russh",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "hop-telnet"
+version = "0.1.6"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "hop-core",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "html5ever"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4667,140 +4801,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be97d76faf1bfab666e1375477b23fde79eccf0276e9b63b92a39d676a889ba9"
 dependencies = [
  "rand 0.8.7",
-]
-
-[[package]]
-name = "portus"
-version = "0.1.6"
-dependencies = [
- "async-trait",
- "bytes",
- "portus-core",
- "portus-rdp",
- "portus-serial",
- "portus-sftp",
- "portus-shell",
- "portus-ssh",
- "portus-telnet",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-opener",
- "tauri-plugin-process",
- "tauri-plugin-single-instance",
- "tauri-plugin-updater",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "portus-core"
-version = "0.1.6"
-dependencies = [
- "async-trait",
- "bytes",
- "directories",
- "keyring",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "portus-rdp"
-version = "0.1.6"
-dependencies = [
- "base64 0.22.1",
- "image",
- "ironrdp",
- "ironrdp-blocking",
- "portus-core",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sspi",
- "thiserror 2.0.20",
- "tokio",
- "tokio-rustls",
- "tracing",
- "x509-cert 0.3.0",
-]
-
-[[package]]
-name = "portus-serial"
-version = "0.1.6"
-dependencies = [
- "async-trait",
- "bytes",
- "portus-core",
- "serde",
- "serde_json",
- "serialport",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "portus-sftp"
-version = "0.1.6"
-dependencies = [
- "async-trait",
- "bytes",
- "portus-core",
- "portus-ssh",
- "russh",
- "russh-sftp",
- "serde",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "portus-shell"
-version = "0.1.6"
-dependencies = [
- "async-trait",
- "bytes",
- "portable-pty",
- "portus-core",
- "serde",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "portus-ssh"
-version = "0.1.6"
-dependencies = [
- "async-trait",
- "bytes",
- "portus-core",
- "russh",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "portus-telnet"
-version = "0.1.6"
-dependencies = [
- "async-trait",
- "bytes",
- "portus-core",
- "tokio",
- "tracing",
 ]
 
 [[package]]

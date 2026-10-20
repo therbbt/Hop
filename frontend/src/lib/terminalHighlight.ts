@@ -567,7 +567,7 @@ function fixLowContrastDircolors(escapeSequence: string): string {
 // ~16KB, per measurement) — the actual failure mode is *volume*: a `SELECT
 // *` against a 51k-row table streamed a few MB through in a couple hundred
 // chunks measured at ~770ms of *cumulative* main-thread time, all of it
-// synchronous, all of it blocking the one UI thread portus (like any
+// synchronous, all of it blocking the one UI thread hop (like any
 // webview app) has — indistinguishable from the app hanging. Capping
 // individual chunks wouldn't have helped; those chunks were each already
 // small and each already fast. What actually matters is total throughput,
@@ -621,7 +621,7 @@ function highlightWithinEscapedText(text: string): string {
   return result.replace(RESET_THEN_PREFIX, (_m, prefix: string) => `\x1b[0m/${sgr(33, prefix)}`);
 }
 
-// Rebuilds a shell prompt ("user@host:path$") into portus's own consistent
+// Rebuilds a shell prompt ("user@host:path$") into hop's own consistent
 // style even when the shell already colored it itself. Every shell (a
 // local Fedora session's own prompt script, whatever a given SSH server's
 // /etc/skel sets up) has its own opinion about how to draw this — bold or

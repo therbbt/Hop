@@ -1,6 +1,6 @@
 /target
-/app/portus/target
-/app/portus/gen
+/app/hop/target
+/app/hop/gen
 
 node_modules
 frontend/dist

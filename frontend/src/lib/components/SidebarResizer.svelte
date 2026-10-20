@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
-  const SIDEBAR_WIDTH_KEY = "portus.sidebarWidth";
+  const SIDEBAR_WIDTH_KEY = "hop.sidebarWidth";
   const SIDEBAR_MIN_WIDTH = 80;
   const SIDEBAR_MAX_WIDTH = 480;
   const DEFAULT_SIDEBAR_WIDTH = 260;

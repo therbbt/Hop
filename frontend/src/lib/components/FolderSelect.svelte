@@ -3,7 +3,7 @@
 
   // A native <select>'s open option list can't be restyled — its hover/
   // selected highlight always uses the OS's own accent color (blue on most
-  // systems), clashing with Portus's teal accent no matter what CSS is
+  // systems), clashing with Hop's teal accent no matter what CSS is
   // applied to the closed control. This is a drop-in replacement (bind
   // `value` the same way) built from a plain trigger button + popup list,
   // matching the app's other dropdown menus (NewSessionMenu.svelte etc.)

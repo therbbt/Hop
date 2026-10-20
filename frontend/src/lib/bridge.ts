@@ -16,7 +16,7 @@ export type SessionEvent =
   | { type: "state_changed"; state: SessionState }
   | { type: "closed"; reason: string | null }
   | { type: "error"; message: string }
-  /** The server's SSH host key doesn't match what Portus last recorded for
+  /** The server's SSH host key doesn't match what Hop last recorded for
    * this host — a legitimate key rotation (server rebuilt) or an active
    * MITM look identical from here. The connection has already been
    * refused; `trustHostKey` is the only way to proceed. */
@@ -88,7 +88,7 @@ export async function listWslDistros(): Promise<string[]> {
 }
 
 // --- Saved sessions ----------------------------------------------------------
-// Mirrors portus-core's Config/SavedSession/AuthMethod. AuthMethodDto's
+// Mirrors hop-core's Config/SavedSession/AuthMethod. AuthMethodDto's
 // handle fields are opaque keychain references, not secrets — never used
 // directly as a password. Call resolveSessionSecret() to get the real value
 // back.
@@ -238,7 +238,7 @@ export interface Theme {
   colors: TerminalColors;
 }
 
-export interface PortusConfig {
+export interface HopConfig {
   schemaVersion: number;
   groups: Group[];
   sessions: SavedSession[];
@@ -261,11 +261,11 @@ export interface PortusConfig {
   };
 }
 
-export async function getConfig(): Promise<PortusConfig> {
-  return invoke<PortusConfig>("get_config");
+export async function getConfig(): Promise<HopConfig> {
+  return invoke<HopConfig>("get_config");
 }
 
-export async function saveConfig(config: PortusConfig): Promise<void> {
+export async function saveConfig(config: HopConfig): Promise<void> {
   await invoke("save_config", { config });
 }
 
@@ -294,20 +294,20 @@ export interface SaveSessionInput {
   workingDir?: string | null;
 }
 
-export async function saveSession(input: SaveSessionInput): Promise<PortusConfig> {
-  return invoke<PortusConfig>("save_session", { ...input });
+export async function saveSession(input: SaveSessionInput): Promise<HopConfig> {
+  return invoke<HopConfig>("save_session", { ...input });
 }
 
-export async function deleteSession(savedSessionId: string): Promise<PortusConfig> {
-  return invoke<PortusConfig>("delete_session", { savedSessionId });
+export async function deleteSession(savedSessionId: string): Promise<HopConfig> {
+  return invoke<HopConfig>("delete_session", { savedSessionId });
 }
 
 /** Drag-and-drop in the sidebar: files a saved session into `groupId` (or
  * the root, if `null`) and/or repositions it among its new siblings.
  * `sortOrder` is typically the midpoint between the two siblings the drop
  * landed between. */
-export async function reorderSession(sessionId: string, groupId: string | null, sortOrder: number): Promise<PortusConfig> {
-  return invoke<PortusConfig>("reorder_session", { sessionId, groupId, sortOrder });
+export async function reorderSession(sessionId: string, groupId: string | null, sortOrder: number): Promise<HopConfig> {
+  return invoke<HopConfig>("reorder_session", { sessionId, groupId, sortOrder });
 }
 
 // --- Groups (sidebar folders) ----------------------------------------------
@@ -318,28 +318,28 @@ export interface SaveGroupInput {
   parentId?: string | null;
 }
 
-export async function saveGroup(input: SaveGroupInput): Promise<PortusConfig> {
-  return invoke<PortusConfig>("save_group", { ...input });
+export async function saveGroup(input: SaveGroupInput): Promise<HopConfig> {
+  return invoke<HopConfig>("save_group", { ...input });
 }
 
-export async function deleteGroup(groupId: string): Promise<PortusConfig> {
-  return invoke<PortusConfig>("delete_group", { groupId });
+export async function deleteGroup(groupId: string): Promise<HopConfig> {
+  return invoke<HopConfig>("delete_group", { groupId });
 }
 
-export async function setGroupCollapsed(groupId: string, collapsed: boolean): Promise<PortusConfig> {
-  return invoke<PortusConfig>("set_group_collapsed", { groupId, collapsed });
+export async function setGroupCollapsed(groupId: string, collapsed: boolean): Promise<HopConfig> {
+  return invoke<HopConfig>("set_group_collapsed", { groupId, collapsed });
 }
 
 /** `slug: null` clears it. See `Group.slug`'s own doc comment. */
-export async function setGroupSlug(groupId: string, slug: string | null): Promise<PortusConfig> {
-  return invoke<PortusConfig>("set_group_slug", { groupId, slug });
+export async function setGroupSlug(groupId: string, slug: string | null): Promise<HopConfig> {
+  return invoke<HopConfig>("set_group_slug", { groupId, slug });
 }
 
 /** Drag-and-drop in the sidebar: reparents a folder (or moves it to the
  * root, if `parentId` is `null`) and/or repositions it among its new
  * siblings — see reorderSession(). */
-export async function reorderGroup(groupId: string, parentId: string | null, sortOrder: number): Promise<PortusConfig> {
-  return invoke<PortusConfig>("reorder_group", { groupId, parentId, sortOrder });
+export async function reorderGroup(groupId: string, parentId: string | null, sortOrder: number): Promise<HopConfig> {
+  return invoke<HopConfig>("reorder_group", { groupId, parentId, sortOrder });
 }
 
 /** Pulls a saved session's password/passphrase back out of the keychain.
@@ -371,7 +371,7 @@ export async function trustHostKey(hostId: string, keyBase64: string): Promise<v
 // --- SFTP --------------------------------------------------------------
 // A file panel, not a terminal session — plain request/response calls
 // rather than the session bridge's event stream. Runs over its own SSH
-// connection (see portus-sftp), so it takes the same SshConnectOptions.
+// connection (see hop-sftp), so it takes the same SshConnectOptions.
 
 export interface SftpDirEntry {
   name: string;
@@ -465,7 +465,7 @@ export type RdpEvent =
   | ({ type: "frame" } & RdpFrameUpdate)
   | { type: "disconnected"; reason: string | null }
   | { type: "error"; message: string }
-  /** The server's TLS certificate doesn't match what Portus last recorded
+  /** The server's TLS certificate doesn't match what Hop last recorded
    * for this host — a legitimate certificate renewal (server rebuilt) or
    * an active MITM look identical from here. The connection has already
    * been refused; `trustRdpHostKey` is the only way to proceed. Mirrors
