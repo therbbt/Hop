@@ -2,6 +2,7 @@
   import { createEventDispatcher, onMount } from "svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import type { TerminalColors, Theme } from "../bridge";
+  import { THERBBT_COLORS, THERBBT_THEME_ID } from "../therbbtTheme";
 
   export let terminalFontFamily: string;
   export let terminalFontSize: number;
@@ -119,79 +120,6 @@
     typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: light)").matches
       ? LIGHT_DEFAULT_COLORS
       : DARK_DEFAULT_COLORS;
-
-  // Hop's second built-in theme — therbbt's own branding (dark backdrop,
-  // hot-pink signature color, cyan secondary accent), restrained rather
-  // than a wall of distinct saturated hues: pink marks "this is a live
-  // session" (prompt, sshIndicator, URLs), cyan marks "this is a place"
-  // (folders, addresses, symlinks) — two accents with distinct meanings
-  // rather than one color standing in for everything, and everything else
-  // pulled back to muted violet-grey neutrals or a conventional (not neon)
-  // semantic color. First pass used a different vivid color per ANSI slot
-  // and read as too busy; second pass shared one pink across folders *and*
-  // sessions, which then couldn't be told apart at a glance. Deliberately
-  // dark-only (no light variant the way
-  // DEFAULT_COLORS has) rather than adapting to the OS's light/dark
-  // setting, the same way most themed terminal palettes (Dracula, Rosé
-  // Pine, ...) aren't light-mode-aware either — spread from
-  // DARK_DEFAULT_COLORS rather than listing every key, so every swatch
-  // this doesn't explicitly override (the backgrounds and text colors —
-  // "keep the background color") is *structurally* guaranteed identical to
-  // today's default, not just by omission that could silently drift.
-  const THERBBT_PINK = "#f2409c";
-  const THERBBT_CYAN = "#3fd6e0";
-  const THERBBT_COLORS: Record<keyof TerminalColors, string> = {
-    ...DARK_DEFAULT_COLORS,
-    black: "#322a38",
-    red: "#e0485f",
-    // Matches the sidebar/SSH accent below, same as DARK_DEFAULT_COLORS'
-    // own green/brightGreen deliberately match its accent rather than
-    // reading as literal green — see that block's comment.
-    green: THERBBT_PINK,
-    yellow: "#d9a84e",
-    // MAC addresses / ports — folded into the same muted violet-grey rather
-    // than each getting their own saturated hue, so the pink/cyan pair
-    // reads as the theme's one real accent instead of competing with it.
-    blue: "#8d87a8",
-    magenta: "#9d7bab",
-    cyan: THERBBT_CYAN,
-    white: "#a39aa8",
-    brightBlack: "#6e6475",
-    brightRed: "#f2607a",
-    brightGreen: THERBBT_PINK,
-    brightYellow: "#e8bd6e",
-    // Folders & directories — matches folderIcon below for consistency
-    // between the sidebar's folder icon and a folder's color inside a
-    // terminal listing. Cyan rather than pink specifically so a folder and
-    // an SSH session (sshIndicator, still pink) read as visibly different
-    // things at a glance instead of competing for the same signature color.
-    brightBlue: THERBBT_CYAN,
-    brightMagenta: "#a893b5",
-    brightCyan: THERBBT_CYAN,
-    brightWhite: "#e8e3ea",
-    // Success stays a true, muted (not neon) green on purpose — this is a
-    // separate dedicated slot specifically so it can stay semantically
-    // "green" independent of whatever the ANSI green slot above is doing
-    // (see TerminalColors' own doc comment on highlightGreen).
-    highlightGreen: "#5fd68a",
-    highlightGet: THERBBT_CYAN,
-    highlightUrl: THERBBT_PINK,
-    highlightIpv6: "#8d87a8",
-    // Cyan, not pink — kept visually distinct from sshIndicator below so a
-    // folder row and an SSH session row don't read as the same thing.
-    folderIcon: THERBBT_CYAN,
-    sshIndicator: THERBBT_PINK,
-    // Cyan too, not the plain grey Default uses — a connected local shell/
-    // serial/telnet/RDP session now reads as clearly "connected" instead
-    // of looking like it might be the same muted tone as statusDisconnected.
-    defaultIndicator: THERBBT_CYAN,
-    // A soft violet of its own, not sharing yellow's hue — "connecting" and
-    // "warning" looking identical was confusing with the gold this used
-    // before.
-    statusConnecting: "#8a6fd1",
-    statusDisconnected: "#6e6475",
-    statusError: "#e0485f",
-  };
 
   // Grouped by what each color is actually *for*, not by ANSI slot/weight —
   // "Standard"/"Bright"/"Dedicated" told you where a color lives in the
@@ -337,11 +265,11 @@
   // outside the theme picker. This id is a plain sentinel, never a real
   // theme's (those are crypto.randomUUID()), so it can never collide.
   const DEFAULT_THEME_ID = "default";
-  // Hop's second built-in theme, pinned right after Default - same
-  // fixed/not-deletable treatment, just resolving to THERBBT_COLORS
-  // instead of DEFAULT_COLORS. A user can still freely create their own
-  // themes on top of either one via "New theme…", same as always.
-  const THERBBT_THEME_ID = "therbbt";
+  // Hop's second built-in theme (THERBBT_THEME_ID, in therbbtTheme.ts) is
+  // pinned right after Default - same fixed/not-deletable treatment, just
+  // resolving to THERBBT_COLORS instead of DEFAULT_COLORS. A user can still
+  // freely create their own themes on top of either one via "New theme…",
+  // same as always.
 
   let fontFamily = terminalFontFamily;
   let layoutMode: boolean | null = keyboardUi;
