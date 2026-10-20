@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import TitleBar from "./TitleBar.svelte";
   import ResizeHandles from "./ResizeHandles.svelte";
@@ -21,6 +21,9 @@
   import UpdateDialog from "./UpdateDialog.svelte";
   import { check as checkForUpdate, type Update } from "@tauri-apps/plugin-updater";
   import ContextMenu, { type ContextMenuItem } from "./ContextMenu.svelte";
+  import CommandPalette, { type PaletteItem, type PaletteStep } from "./CommandPalette.svelte";
+  import SlimTabs from "./SlimTabs.svelte";
+  import { SHORTCUTS, matchShortcut, type ShortcutId } from "../shortcuts";
   import type {
     Protocol,
     SessionState,
@@ -130,6 +133,15 @@
   let sidebarVisible = typeof window === "undefined" ? true : window.localStorage.getItem(SIDEBAR_VISIBLE_KEY) !== "false";
   let config: PortusConfig | null = null;
 
+  // Keyboard-first layout: no title bar, buttons or sidebar - a slim tab
+  // line, hotkeys (shortcuts.ts) and the command palette instead. On by
+  // default under a tiling compositor (Hyprland), where the window is
+  // placed and sized by the compositor and driven from the keyboard;
+  // Settings can force it on or off anywhere.
+  let tilingWm = false;
+  $: keyboardUi = config?.settings.keyboardUi ?? tilingWm;
+  let paletteStep: PaletteStep | null = null;
+
   function toggleSidebar() {
     sidebarVisible = !sidebarVisible;
     window.localStorage.setItem(SIDEBAR_VISIBLE_KEY, String(sidebarVisible));
@@ -177,6 +189,15 @@
   }
 
   $: activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
+  // What the tab strip / slim tab line show per tab - see folderSlugForPane
+  // for why sessions and groups are passed in rather than closed over.
+  $: tabSummaries = tabs.map((t) => ({
+    id: t.id,
+    title: t.title,
+    state: panes[t.activePaneId]?.state ?? "disconnected",
+    protocol: panes[t.activePaneId]?.protocol,
+    folderSlug: folderSlugForPane(panes[t.activePaneId], sessions, groups),
+  }));
   $: activePane = activeTab ? (panes[activeTab.activePaneId] ?? null) : null;
   $: activeSshOptions = activePane?.protocol === "ssh" ? (activePane.options as SshConnectOptions) : null;
 
@@ -283,6 +304,7 @@
     void checkForAppUpdate();
 
     isWindows = (await invoke<string>("platform_name").catch(() => "unknown")) === "windows";
+    tilingWm = await invoke<boolean>("uses_tiling_wm").catch(() => false);
   });
 
   function openSettingsPanel() {
@@ -688,28 +710,278 @@
     showSftpPanel = !showSftpPanel;
   }
 
-  // Ctrl+Shift+<key> rather than a plain Ctrl+<key> — xterm.js's default
-  // keymap doesn't turn Ctrl+Shift combos into shell control sequences, so
-  // this is safe to reserve at the app level even while a terminal pane has
-  // keyboard focus, the same convention Windows Terminal/GNOME Terminal use.
+  // --- Keyboard: shortcuts and the command palette --------------------------
+
+  $: modalOpen =
+    showSshDialog ||
+    showSerialDialog ||
+    showShellPresetDialog ||
+    showNewSessionDialog ||
+    showSaveAsDialog ||
+    showSettingsPanel ||
+    showShortcutsPanel ||
+    updateDetailsOpen;
+
   function handleKeydown(event: KeyboardEvent) {
-    if (!event.ctrlKey || !event.shiftKey) return;
-    const key = event.key.toLowerCase();
-    if (key === "d") {
-      event.preventDefault();
-      splitActivePane("row");
-    } else if (key === "e") {
-      event.preventDefault();
-      splitActivePane("column");
+    const match = matchShortcut(event);
+    if (!match) return;
+    // The palette's own input handles keys while it's open; only its
+    // toggle passes through. Dialogs keep the keyboard to themselves too.
+    if (paletteStep) {
+      if (match.id === "palette") {
+        event.preventDefault();
+        void closePalette();
+      }
+      return;
     }
+    if (modalOpen) return;
+    // No sidebar to toggle in the keyboard-first layout.
+    if (keyboardUi && match.id === "toggleSidebar") return;
+    event.preventDefault();
+    const next = shortcutAction(match.id, match.tabIndex);
+    if (next) paletteStep = next;
+  }
+
+  /** Runs a shortcut's action - from its hotkey or its palette entry. Some
+   * actions need more input first (a name, a confirmation) and return the
+   * palette step that asks for it. */
+  function shortcutAction(id: ShortcutId, tabIndex = 0): PaletteStep | void {
+    switch (id) {
+      case "palette":
+        return rootPaletteStep();
+      case "newShell":
+        newShellTab();
+        return;
+      case "newSession":
+        openNewSessionDialog("ssh");
+        return;
+      case "closePane":
+        if (activeTab) closePane(activeTab.id, activeTab.activePaneId);
+        return;
+      case "splitRow":
+        splitActivePane("row");
+        return;
+      case "splitColumn":
+        splitActivePane("column");
+        return;
+      case "nextTab":
+        cycleTab(1);
+        return;
+      case "prevTab":
+        cycleTab(-1);
+        return;
+      case "goToTab":
+        if (tabs[tabIndex]) selectTab(tabs[tabIndex].id);
+        return;
+      case "nextPane":
+        cyclePane(1);
+        return;
+      case "prevPane":
+        cyclePane(-1);
+        return;
+      case "renameTab":
+        return activeTab ? renameTabStep(activeTab) : undefined;
+      case "reconnect":
+        // Same rule as the tab menu's Reconnect: only once the session has
+        // dropped, never racing a live or still-connecting one.
+        if (activeTab && activePane?.state === "disconnected") reconnectTab(activeTab.id);
+        return;
+      case "saveAsSession":
+        if (activeTab) onSaveTabAsSession(activeTab.id);
+        return;
+      case "files":
+        if (activePane?.protocol === "ssh") toggleSftpPanel();
+        return;
+      case "toggleSidebar":
+        if (!keyboardUi) toggleSidebar();
+        return;
+      case "settings":
+        openSettingsPanel();
+        return;
+      case "shortcuts":
+        showShortcutsPanel = true;
+        return;
+    }
+  }
+
+  async function closePalette() {
+    paletteStep = null;
+    await tick();
+    if (activeTab) paneGridRefs[activeTab.id]?.focusPane(activeTab.activePaneId);
+  }
+
+  function cycleTab(delta: number) {
+    if (tabs.length < 2) return;
+    const index = tabs.findIndex((t) => t.id === activeTabId);
+    selectTab(tabs[(index + delta + tabs.length) % tabs.length].id);
+  }
+
+  function cyclePane(delta: number) {
+    if (!activeTab) return;
+    const ids = collectPaneIds(activeTab.layout);
+    if (ids.length < 2) return;
+    const index = ids.indexOf(activeTab.activePaneId);
+    focusPane(activeTab.id, ids[(index + delta + ids.length) % ids.length]);
+  }
+
+  function openNewSessionDialog(type: typeof newSessionInitialType) {
+    newSessionInitialType = type;
+    showNewSessionDialog = true;
+  }
+
+  function folderPath(groupId: string | null | undefined): string {
+    const names: string[] = [];
+    let id = groupId ?? null;
+    while (id && names.length < 32) {
+      const group = groups.find((g) => g.id === id);
+      if (!group) break;
+      names.unshift(group.name);
+      id = group.parentId ?? null;
+    }
+    return names.join("/");
+  }
+
+  function rootPaletteStep(): PaletteStep {
+    const tabItems: PaletteItem[] = tabs.map((tab, i) => ({
+      id: `tab:${tab.id}`,
+      label: tab.title,
+      detail: tab.id === activeTabId ? "current tab" : "open tab",
+      hint: i < 9 ? `Ctrl+Shift+${i + 1}` : undefined,
+      run: () => selectTab(tab.id),
+    }));
+    const sessionItems: PaletteItem[] = sessions.map((session) => ({
+      id: `session:${session.id}`,
+      label: session.name,
+      detail: [session.protocol, folderPath(session.groupId)].filter(Boolean).join(" · "),
+      run: () => void connectToSavedSession(session),
+    }));
+    return {
+      kind: "list",
+      placeholder: "Search sessions, tabs and commands…",
+      items: [...tabItems, ...sessionItems, ...paletteActions()],
+    };
+  }
+
+  function paletteActions(): PaletteItem[] {
+    const shortcutItems: PaletteItem[] = SHORTCUTS.filter(
+      (s) => s.id !== "palette" && s.id !== "goToTab" && !(keyboardUi && s.id === "toggleSidebar"),
+    ).map((s) => ({ id: `action:${s.id}`, label: s.label, hint: s.keys, run: () => shortcutAction(s.id) }));
+    const action = (id: string, label: string, run: PaletteItem["run"]): PaletteItem => ({ id: `action:${id}`, label, run });
+    return [
+      ...shortcutItems,
+      action("newSsh", "New SSH session…", () => openNewSessionDialog("ssh")),
+      action("newRdp", "New RDP session…", () => openNewSessionDialog("rdp")),
+      action("newSerial", "New serial session…", () => openNewSessionDialog("serial")),
+      action("newShellPreset", "New local shell preset…", () => openNewSessionDialog("shell")),
+      // RDP sessions have no edit dialog (see onEditSession).
+      action("editSession", "Edit session…", () =>
+        pickSession("Edit which session?", (s) => s.protocol !== "rdp", (s) => onEditSession(s)),
+      ),
+      action("moveSession", "Move session to folder…", () =>
+        pickSession("Move which session?", () => true, (s) =>
+          pickFolder(`Move "${s.name}" to…`, true, (groupId) => void moveSessionToFolder(s, groupId)),
+        ),
+      ),
+      action("deleteSession", "Delete session…", () =>
+        pickSession("Delete which session?", () => true, (s) => confirmStep(`Delete "${s.name}"`, () => void onDeleteSession(s))),
+      ),
+      action("newFolder", "New folder…", () => ({
+        kind: "input",
+        placeholder: "New folder name",
+        onSubmit: (name) => {
+          if (name.trim()) void onCreateFolder(name.trim());
+        },
+      })),
+      action("renameFolder", "Rename folder…", () =>
+        pickFolder("Rename which folder?", false, (groupId) => {
+          const group = groups.find((g) => g.id === groupId)!;
+          return {
+            kind: "input",
+            placeholder: "New folder name",
+            initial: group.name,
+            onSubmit: (name) => {
+              if (name.trim()) void onRenameFolder(group.id, name.trim());
+            },
+          };
+        }),
+      ),
+      action("folderSlug", "Set folder slug…", () =>
+        pickFolder("Set the slug of which folder?", false, (groupId) => {
+          const group = groups.find((g) => g.id === groupId)!;
+          return {
+            kind: "input",
+            placeholder: "Slug shown after tab titles, e.g. PROD (empty to remove)",
+            initial: group.slug ?? "",
+            onSubmit: (slug) => void onSetFolderSlug(group.id, slug.trim() || null),
+          };
+        }),
+      ),
+      action("deleteFolder", "Delete folder…", () =>
+        pickFolder("Delete which folder?", false, (groupId) => {
+          const group = groups.find((g) => g.id === groupId)!;
+          return confirmStep(`Delete folder "${group.name}" (its sessions move to the top level)`, () => void onDeleteFolder(group));
+        }),
+      ),
+    ];
+  }
+
+  function pickSession(
+    placeholder: string,
+    include: (s: SavedSession) => boolean,
+    onPick: (s: SavedSession) => PaletteStep | void,
+  ): PaletteStep {
+    return {
+      kind: "list",
+      placeholder,
+      items: sessions.filter(include).map((s) => ({
+        id: `pick:${s.id}`,
+        label: s.name,
+        detail: [s.protocol, folderPath(s.groupId)].filter(Boolean).join(" · "),
+        run: () => onPick(s),
+      })),
+    };
+  }
+
+  function pickFolder(placeholder: string, includeTopLevel: boolean, onPick: (groupId: string | null) => PaletteStep | void): PaletteStep {
+    const folders: PaletteItem[] = groups.map((g) => ({
+      id: `folder:${g.id}`,
+      label: folderPath(g.id),
+      detail: g.slug ? `[${g.slug}]` : undefined,
+      run: () => onPick(g.id),
+    }));
+    const topLevel: PaletteItem = { id: "folder:none", label: "(Top level, no folder)", run: () => onPick(null) };
+    return { kind: "list", placeholder, items: includeTopLevel ? [topLevel, ...folders] : folders };
+  }
+
+  function confirmStep(label: string, onConfirm: () => void): PaletteStep {
+    return {
+      kind: "list",
+      placeholder: "Are you sure?",
+      items: [
+        { id: "confirm:yes", label, run: onConfirm },
+        { id: "confirm:no", label: "Cancel", run: () => {} },
+      ],
+    };
+  }
+
+  function renameTabStep(tab: Tab): PaletteStep {
+    return { kind: "input", placeholder: "Tab name", initial: tab.title, onSubmit: (title) => onRename(tab.id, title) };
+  }
+
+  /** Appends the session after the target folder's last one. */
+  async function moveSessionToFolder(session: SavedSession, groupId: string | null) {
+    const siblings = sessions.filter((s) => (s.groupId ?? null) === groupId && s.id !== session.id);
+    const sortOrder = siblings.length ? Math.max(...siblings.map((s) => s.sortOrder)) + 1 : 0;
+    await onReorderSession({ id: session.id, groupId, sortOrder });
   }
 </script>
 
 <svelte:window on:keydown={handleKeydown} />
 
-<div class="app-shell" class:squared={windowSquared}>
+<div class="app-shell" class:squared={windowSquared} class:keyboard={keyboardUi}>
   <ResizeHandles squared={windowSquared} />
   <TitleBar
+    hidden={keyboardUi}
     splitDisabled={!activeTab}
     sidebarHidden={!sidebarVisible}
     bind:squared={titleBarSquared}
@@ -719,41 +991,41 @@
     on:showShortcuts={() => (showShortcutsPanel = true)}
     on:showSettings={openSettingsPanel}
   />
-  <div class="action-bar">
-    {#if sidebarVisible}
-      <div class="action-bar-sidebar" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px">
-        <NewSessionButton
-          on:open={() => {
-            newSessionInitialType = "ssh";
-            showNewSessionDialog = true;
-          }}
-        />
-      </div>
+  {#if keyboardUi}
+    {#if tabs.length > 1}
+      <SlimTabs tabs={tabSummaries} activeId={activeTabId} on:select={(e) => selectTab(e.detail.id)} />
     {/if}
-    <div class="action-bar-main">
-      <TabStrip
-        tabs={tabs.map((t) => ({
-          id: t.id,
-          title: t.title,
-          state: panes[t.activePaneId]?.state ?? "disconnected",
-          protocol: panes[t.activePaneId]?.protocol,
-          folderSlug: folderSlugForPane(panes[t.activePaneId], sessions, groups),
-        }))}
-        activeId={activeTabId}
-        on:select={(e) => selectTab(e.detail.id)}
-        on:close={(e) => closeTab(e.detail.id)}
-        on:rename={(e) => onRename(e.detail.id, e.detail.title)}
-        on:saveAs={(e) => onSaveTabAsSession(e.detail.id)}
-        on:reconnect={(e) => reconnectTab(e.detail.id)}
-        on:openContextMenu={(e) => (contextMenu = e.detail)}
-      />
-      {#if activePane?.protocol === "ssh"}
-        <button class="files-btn" class:active={showSftpPanel} on:click={toggleSftpPanel}>Files</button>
+  {:else}
+    <div class="action-bar">
+      {#if sidebarVisible}
+        <div class="action-bar-sidebar" style="width: {sidebarWidth}px; min-width: {sidebarWidth}px">
+          <NewSessionButton
+            on:open={() => {
+              newSessionInitialType = "ssh";
+              showNewSessionDialog = true;
+            }}
+          />
+        </div>
       {/if}
+      <div class="action-bar-main">
+        <TabStrip
+          tabs={tabSummaries}
+          activeId={activeTabId}
+          on:select={(e) => selectTab(e.detail.id)}
+          on:close={(e) => closeTab(e.detail.id)}
+          on:rename={(e) => onRename(e.detail.id, e.detail.title)}
+          on:saveAs={(e) => onSaveTabAsSession(e.detail.id)}
+          on:reconnect={(e) => reconnectTab(e.detail.id)}
+          on:openContextMenu={(e) => (contextMenu = e.detail)}
+        />
+        {#if activePane?.protocol === "ssh"}
+          <button class="files-btn" class:active={showSftpPanel} on:click={toggleSftpPanel}>Files</button>
+        {/if}
+      </div>
     </div>
-  </div>
+  {/if}
   <div class="body">
-    {#if sidebarVisible}
+    {#if sidebarVisible && !keyboardUi}
       <SessionTree
         {sessions}
         {groups}
@@ -783,6 +1055,7 @@
               activePaneId={tab.activePaneId}
               active={tab.id === activeTabId}
               showHeader={collectPaneIds(tab.layout).length > 1}
+              keyboard={keyboardUi}
               onFocusPane={(paneId) => focusPane(tab.id, paneId)}
               onClosePane={(paneId) => closePane(tab.id, paneId)}
               onResizeSplit={(splitId, sizes) => resizeSplit(tab.id, splitId, sizes)}
@@ -794,6 +1067,7 @@
         {/each}
         {#if tabs.length === 0}
           <EmptyMainArea
+            keyboard={keyboardUi}
             on:newShell={() => {
               newSessionInitialType = "shell";
               showNewSessionDialog = true;
@@ -886,19 +1160,23 @@
       terminalFontSize={config.settings.terminalFontSize}
       themes={config.settings.themes}
       activeThemeId={config.settings.activeThemeId}
+      keyboardUi={config.settings.keyboardUi ?? null}
       onCheckForUpdate={checkForUpdateManually}
       on:save={(e) => onSaveSettings(e.detail)}
       on:cancel={() => (showSettingsPanel = false)}
     />
   {/if}
   {#if showShortcutsPanel}
-    <ShortcutsPanel on:cancel={() => (showShortcutsPanel = false)} />
+    <ShortcutsPanel keyboard={keyboardUi} on:cancel={() => (showShortcutsPanel = false)} />
   {/if}
   {#if showUpdateToast && !updateDetailsOpen}
     <UpdateToast version={availableUpdate?.version ?? ""} onViewDetails={() => (updateDetailsOpen = true)} onDismiss={dismissUpdate} />
   {/if}
   {#if updateDetailsOpen && availableUpdate}
     <UpdateDialog update={availableUpdate} onDismiss={dismissUpdate} />
+  {/if}
+  {#if paletteStep}
+    <CommandPalette step={paletteStep} on:close={closePalette} />
   {/if}
   {#if contextMenu}
     <ContextMenu x={contextMenu.x} y={contextMenu.y} items={contextMenu.items} onClose={() => (contextMenu = null)} />
@@ -915,7 +1193,7 @@
     display: flex;
     flex-direction: column;
     background: var(--surface-0);
-    border-radius: var(--radius-lg);
+    border-radius: var(--window-radius);
     overflow: hidden;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
   }
@@ -923,6 +1201,12 @@
      see TitleBar.svelte's updateSquared) reads wrong with floating rounded
      corners/shadow, so both collapse to nothing while windowSquared is
      true — same treatment FlashPad uses for its window shell. */
+  /* Keyboard-first layout: the same 14px of space around the text as
+     Omarchy's own terminals (Alacritty/Ghostty padding, kitty's suggested
+     window_padding_width). */
+  .app-shell.keyboard {
+    --terminal-padding: 14px;
+  }
   .app-shell.squared {
     border-radius: 0;
     box-shadow: none;

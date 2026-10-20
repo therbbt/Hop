@@ -3,12 +3,18 @@
 
   const dispatch = createEventDispatcher<{ cancel: void }>();
 
-  const SHORTCUTS: Array<{ label: string; keys: string }> = [
-    { label: "Split pane right", keys: "Ctrl+Shift+D" },
-    { label: "Split pane down", keys: "Ctrl+Shift+E" },
+  import { SHORTCUTS as APP_SHORTCUTS } from "../shortcuts";
+
+  /** Keyboard-first layout (see App.svelte): it has no sidebar, so the
+   * sidebar toggle isn't listed. */
+  export let keyboard = false;
+
+  $: SHORTCUTS = [
+    ...APP_SHORTCUTS.filter((s) => !(keyboard && s.id === "toggleSidebar")).map(({ label, keys }) => ({ label, keys })),
     // A true OS-level global hotkey (works even when Portus isn't
-    // focused) - registered in Rust (see tray.rs), not App.svelte's
-    // handleKeydown like the two above.
+    // focused) - registered in Rust (see tray.rs), not App.svelte's key
+    // handler like the rest. On Hyprland it's bound in the Hyprland
+    // config instead (see the README).
     { label: "Show/hide Portus", keys: "Alt+T" },
   ];
 
@@ -111,6 +117,8 @@
 
   .content {
     padding: var(--space-4);
+    max-height: 70vh;
+    overflow-y: auto;
   }
 
   .shortcut-list {

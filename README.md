@@ -66,10 +66,14 @@ sudo pacman -S --needed base-devel webkit2gtk-4.1 gtk3 librsvg libayatana-appind
 The in-app updater can't update this install (on Linux it only replaces
 AppImages), so re-run the script to update.
 
-Under Hyprland, Portus runs natively on Wayland and lets the compositor
-manage the window: the minimize/maximize/close buttons are hidden, a tiled
-window drops its rounded corners and shadow, and double-clicking the title
-bar maximizes through Hyprland. Hyprland doesn't let apps grab global
+Under Hyprland, Portus runs natively on Wayland, lets the compositor
+manage the window, and switches to a keyboard-first layout: no title bar,
+buttons or sidebar, just the terminal and a slim tab line once two or more
+tabs are open. Everything is a hotkey (`Ctrl+Shift+H` lists them), and
+`Ctrl+Shift+P` opens a command palette that searches saved sessions, open
+tabs and every action, including managing sessions and folders. Settings →
+Terminal → Keyboard-first layout turns it on or off on any desktop. A tiled
+window drops its rounded corners and shadow. Hyprland doesn't let apps grab global
 hotkeys, so the built-in `Alt+T` doesn't work there; bind the hotkey in your
 Hyprland config to run `portus --toggle` instead, which shows or hides the
 running instance. Launching `portus` again while it's running

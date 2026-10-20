@@ -254,6 +254,10 @@ export interface PortusConfig {
      * anything that renders a terminal — terminalColors alone still
      * governs that. */
     activeThemeId: string | null;
+    /** Keyboard-first layout: no title bar, buttons or sidebar, everything
+     * through hotkeys and the command palette. `null`/absent = automatic,
+     * on under a tiling compositor (Hyprland) and off elsewhere. */
+    keyboardUi?: boolean | null;
   };
 }
 

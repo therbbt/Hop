@@ -7,6 +7,8 @@
   export let terminalFontSize: number;
   export let themes: Theme[];
   export let activeThemeId: string | null;
+  /** `null` = automatic (on under Hyprland) - see bridge.ts. */
+  export let keyboardUi: boolean | null = null;
   /** App.svelte owns the actual check (and opens the update dialog itself
    * if one's found) — this just triggers it and reports whether anything
    * came back, so this panel can show its own "you're up to date" message. */
@@ -19,6 +21,7 @@
       terminalColors: TerminalColors;
       themes: Theme[];
       activeThemeId: string | null;
+      keyboardUi: boolean | null;
     };
     cancel: void;
   }>();
@@ -341,6 +344,12 @@
   const THERBBT_THEME_ID = "therbbt";
 
   let fontFamily = terminalFontFamily;
+  let layoutMode: boolean | null = keyboardUi;
+  const LAYOUT_MODES: Array<{ value: boolean | null; label: string }> = [
+    { value: null, label: "Auto" },
+    { value: true, label: "On" },
+    { value: false, label: "Off" },
+  ];
   let fontSize = terminalFontSize;
   // Local working copy — themes/activeThemeId props are this panel's last
   // *saved* state; edits here (create/delete a theme, pick one to load)
@@ -546,6 +555,7 @@
       // config from before therbbt existed) still applies to any value
       // that isn't one of these two sentinels or a real saved theme's id.
       activeThemeId: selectedThemeId === DEFAULT_THEME_ID ? null : selectedThemeId,
+      keyboardUi: layoutMode,
     });
   }
 
@@ -625,6 +635,28 @@
           <p class="hint">
             Applies immediately to every open terminal, not just new ones. "monospace" uses your system's default
             monospace font — type a specific font name instead if you have one installed you'd rather use.
+          </p>
+        </section>
+        <section class="card">
+          <div class="field">
+            <span>Keyboard-first layout</span>
+            <div class="segmented" role="radiogroup" aria-label="Keyboard-first layout">
+              {#each LAYOUT_MODES as mode (mode.label)}
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={layoutMode === mode.value}
+                  class:active={layoutMode === mode.value}
+                  on:click={() => (layoutMode = mode.value)}
+                >
+                  {mode.label}
+                </button>
+              {/each}
+            </div>
+          </div>
+          <p class="hint">
+            Hides the title bar, buttons and sidebar; everything goes through hotkeys and the command palette
+            (Ctrl+Shift+P). Auto turns it on under Hyprland.
           </p>
         </section>
       {:else if activeTab === "colors"}
@@ -873,6 +905,27 @@
     gap: var(--space-3);
   }
 
+  .segmented {
+    display: flex;
+    align-self: flex-start;
+    background: var(--surface-1);
+    border-radius: var(--radius-md);
+    padding: 2px;
+  }
+  .segmented button {
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--fg-secondary);
+    font: inherit;
+    font-size: 0.72rem;
+    padding: 0.25rem 0.8rem;
+    cursor: pointer;
+  }
+  .segmented button.active {
+    background: var(--surface-4);
+    color: var(--fg-primary);
+  }
   .card {
     display: flex;
     flex-direction: column;
