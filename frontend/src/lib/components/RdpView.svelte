@@ -22,7 +22,7 @@
   let desktopSize: { width: number; height: number } | null = null;
 
   /** Set while an RDP connection is refused because the server's
-   * certificate doesn't match what Portus recorded last time — the
+   * certificate doesn't match what Hop recorded last time — the
    * changed-certificate confirm prompt renders while this is non-null.
    * `null` the rest of the time (the vastly more common case: this never
    * happens on a host that never hit a mismatch). Mirrors Terminal.svelte's
@@ -153,7 +153,7 @@
   <Dialog label="RDP certificate changed" width="440px" on:cancel={dismissHostKeyMismatch}>
     <h2 class="title">RDP certificate changed</h2>
     <p class="body">
-      The certificate presented by <strong>{hostKeyMismatch.hostId}</strong> doesn't match the one Portus recorded
+      The certificate presented by <strong>{hostKeyMismatch.hostId}</strong> doesn't match the one Hop recorded
       last time (fingerprint now <code>SHA256:{hostKeyMismatch.fingerprint}</code>).
     </p>
     <p class="body">

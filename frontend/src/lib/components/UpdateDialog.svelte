@@ -49,7 +49,7 @@
   <h2 class="title">Update available</h2>
 
   <p class="version-line">
-    <strong>Portus {update.version}</strong>
+    <strong>Hop {update.version}</strong>
     <span class="muted">you have {update.currentVersion}</span>
   </p>
   {#if formattedDate}

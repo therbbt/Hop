@@ -35,7 +35,7 @@
     SaveSessionInput,
     SavedSession,
     Group,
-    PortusConfig,
+    HopConfig,
     TerminalColors,
   } from "../bridge";
   import {
@@ -106,7 +106,7 @@
   // stay mounted, just hidden - see the .tab-panes each-block below) - only
   // used to reach reconnectTab's target pane, never read reactively.
   let paneGridRefs: Record<string, PaneGrid> = {};
-  const SIDEBAR_VISIBLE_KEY = "portus.sidebarVisible";
+  const SIDEBAR_VISIBLE_KEY = "hop.sidebarVisible";
 
   // True while the window is maximized, fullscreen, or WM-snapped to a
   // screen half — see TitleBar.svelte's updateSquared for the detection.
@@ -131,7 +131,7 @@
   // Defaults true (visible) - only an explicit "false" ever written by
   // toggleSidebar() below should hide it on next launch.
   let sidebarVisible = typeof window === "undefined" ? true : window.localStorage.getItem(SIDEBAR_VISIBLE_KEY) !== "false";
-  let config: PortusConfig | null = null;
+  let config: HopConfig | null = null;
 
   // Keyboard-first layout: no title bar, buttons or sidebar - a slim tab
   // line, hotkeys (shortcuts.ts) and the command palette instead. On by
@@ -148,7 +148,7 @@
   }
 
   // --- Auto-update -------------------------------------------------------
-  const DISMISSED_UPDATE_VERSION_KEY = "portus.dismissedUpdateVersion";
+  const DISMISSED_UPDATE_VERSION_KEY = "hop.dismissedUpdateVersion";
   let availableUpdate: Update | null = null;
   let updateDetailsOpen = false;
   let dismissedUpdateVersion: string | null =
@@ -220,7 +220,7 @@
   // installed, the browser silently substitutes a proportional font while
   // xterm.js still lays out cells at the fixed width it assumed for a
   // monospace font, producing visibly gapped text.
-  function applyTerminalFontVars(settings: PortusConfig["settings"]) {
+  function applyTerminalFontVars(settings: HopConfig["settings"]) {
     const family = settings.terminalFontFamily.trim();
     const primary = CSS_GENERIC_FONT_FAMILIES.has(family) ? family : `"${family.replace(/"/g, '\\"')}"`;
     document.documentElement.style.setProperty("--font-mono", `${primary}, ui-monospace, Consolas, monospace`);
@@ -311,9 +311,9 @@
     showSettingsPanel = true;
   }
 
-  async function onSaveSettings(detail: PortusConfig["settings"]) {
+  async function onSaveSettings(detail: HopConfig["settings"]) {
     showSettingsPanel = false;
-    const next: PortusConfig = config ?? {
+    const next: HopConfig = config ?? {
       schemaVersion: 3,
       groups: [],
       sessions,

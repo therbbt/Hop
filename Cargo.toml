@@ -1,30 +1,30 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/portus-core",
-    "crates/portus-shell",
-    "crates/portus-ssh",
-    "crates/portus-telnet",
-    "crates/portus-serial",
-    "crates/portus-rdp",
-    "crates/portus-sftp",
-    "app/portus",
+    "crates/hop-core",
+    "crates/hop-shell",
+    "crates/hop-ssh",
+    "crates/hop-telnet",
+    "crates/hop-serial",
+    "crates/hop-rdp",
+    "crates/hop-sftp",
+    "app/hop",
 ]
 
 [workspace.package]
 version = "0.1.6"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/portus-app/portus"
+repository = "https://github.com/hop-app/hop"
 
 [workspace.dependencies]
-portus-core = { path = "crates/portus-core" }
-portus-shell = { path = "crates/portus-shell" }
-portus-ssh = { path = "crates/portus-ssh" }
-portus-telnet = { path = "crates/portus-telnet" }
-portus-serial = { path = "crates/portus-serial" }
-portus-rdp = { path = "crates/portus-rdp" }
-portus-sftp = { path = "crates/portus-sftp" }
+hop-core = { path = "crates/hop-core" }
+hop-shell = { path = "crates/hop-shell" }
+hop-ssh = { path = "crates/hop-ssh" }
+hop-telnet = { path = "crates/hop-telnet" }
+hop-serial = { path = "crates/hop-serial" }
+hop-rdp = { path = "crates/hop-rdp" }
+hop-sftp = { path = "crates/hop-sftp" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "io-util", "time", "process", "fs"] }
 async-trait = "0.1"

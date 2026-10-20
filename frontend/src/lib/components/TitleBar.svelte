@@ -121,7 +121,7 @@
 <div class="titlebar" class:hidden data-tauri-drag-region on:dblclick={toggleMaximize}>
   <div class="brand" data-tauri-drag-region>
     <AppIcon size={16} />
-    <span data-tauri-drag-region>Portus</span>
+    <span data-tauri-drag-region>Hop</span>
   </div>
   <div class="spacer" data-tauri-drag-region></div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->

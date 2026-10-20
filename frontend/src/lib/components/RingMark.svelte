@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The Portus mark: a thin ring broken by the harbor-mouth glyph, shared by
+  // The Hop mark: a thin ring broken by the harbor-mouth glyph, shared by
   // empty states and the loading spinner. Reuses the FlashPad ring motif
   // without copying the bolt.
   export let size = 48;

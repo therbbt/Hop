@@ -1,5 +1,5 @@
 {
-  "name": "portus-frontend",
+  "name": "hop-frontend",
   "private": true,
   "version": "0.1.6",
   "type": "module",
@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
-    "tauri": "cd ../app/portus && tauri"
+    "tauri": "cd ../app/hop && tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",

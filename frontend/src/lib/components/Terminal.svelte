@@ -76,7 +76,7 @@
   let decoder: TextDecoder;
 
   /** Set while an SSH connection is refused because the server's host key
-   * doesn't match what Portus recorded last time — the changed-host-key
+   * doesn't match what Hop recorded last time — the changed-host-key
    * confirm prompt renders while this is non-null. `null` the rest of the
    * time (the vastly more common case: this never happens on a session that
    * never hit a mismatch). */
@@ -138,7 +138,7 @@
     cancelPendingPassword();
     pendingPassword = options.auth.password;
     pendingPasswordTimeout = setTimeout(cancelPendingPassword, OFFER_TIMEOUT_MS);
-    term.write("\r\n\x1b[33m[portus] Press Enter to insert the saved password (any other key cancels)\x1b[0m\r\n");
+    term.write("\r\n\x1b[33m[hop] Press Enter to insert the saved password (any other key cancels)\x1b[0m\r\n");
   }
 
   // fit() forces a synchronous layout read, and xterm's own onResize
@@ -257,7 +257,7 @@
         dispatch("closed", { reason: event.reason });
         break;
       case "error":
-        term.write(`\r\n\x1b[31m[portus] ${event.message}\x1b[0m\r\n`);
+        term.write(`\r\n\x1b[31m[hop] ${event.message}\x1b[0m\r\n`);
         break;
       case "host_key_mismatch":
         hostKeyMismatch = { hostId: event.hostId, fingerprint: event.fingerprint, keyBase64: event.keyBase64 };
@@ -452,7 +452,7 @@
   <Dialog label="SSH host key changed" width="440px" on:cancel={dismissHostKeyMismatch}>
     <h2 class="title">SSH host key changed</h2>
     <p class="body">
-      The key presented by <strong>{hostKeyMismatch.hostId}</strong> doesn't match the one Portus recorded last
+      The key presented by <strong>{hostKeyMismatch.hostId}</strong> doesn't match the one Hop recorded last
       time (fingerprint now <code>SHA256:{hostKeyMismatch.fingerprint}</code>).
     </p>
     <p class="body">

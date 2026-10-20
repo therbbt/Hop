@@ -103,11 +103,11 @@
       <input
         type="text"
         bind:value={portName}
-        list="portus-serial-ports"
+        list="hop-serial-ports"
         placeholder="/dev/ttyUSB0"
         autofocus
       />
-      <datalist id="portus-serial-ports">
+      <datalist id="hop-serial-ports">
         {#each availablePorts as port (port)}
           <option value={port}></option>
         {/each}
@@ -120,8 +120,8 @@
 
     <label class="field">
       <span>Baud rate</span>
-      <input type="number" bind:value={baudRate} min="1" list="portus-baud-rates" />
-      <datalist id="portus-baud-rates">
+      <input type="number" bind:value={baudRate} min="1" list="hop-baud-rates" />
+      <datalist id="hop-baud-rates">
         {#each commonBaudRates as rate (rate)}
           <option value={rate}></option>
         {/each}

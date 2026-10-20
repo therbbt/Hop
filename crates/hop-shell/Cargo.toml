@@ -1,0 +1,17 @@
+[package]
+name = "hop-shell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+hop-core = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+portable-pty = "0.8"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }

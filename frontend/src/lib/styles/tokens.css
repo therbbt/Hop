@@ -2,7 +2,7 @@
  * FlashPad-family design tokens.
  *
  * Surfaces, foreground, and accent below are FlashPad's own "FlashPad Dark"
- * palette (see FlashPad's src/lib/theme/palettes.ts) verbatim, so Portus
+ * palette (see FlashPad's src/lib/theme/palettes.ts) verbatim, so Hop
  * reads as a sibling app rather than a different studio's work. An earlier
  * version of this file deliberately used a teal (#4dd0c8, FlashPad's own
  * "search all databases" toggle color) instead of FlashPad's actual blue
@@ -126,7 +126,7 @@
   --highlight-url: #d76a98;
   --highlight-ipv6: #8c72da;
 
-  /* Terminal ANSI 16-color palette — Portus's own default, not xterm.js's
+  /* Terminal ANSI 16-color palette — Hop's own default, not xterm.js's
      generic built-in one, and coordinated with the accent rather than just
      borrowing it for one slot: every hue color below (red/yellow/blue/
      magenta/cyan, normal and bright) shares a common saturation, so the

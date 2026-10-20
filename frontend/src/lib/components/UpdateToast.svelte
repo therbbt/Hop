@@ -13,7 +13,7 @@
   </div>
   <div class="body">
     <span class="title">Update available</span>
-    <span class="subtitle">Portus {version} is ready to install</span>
+    <span class="subtitle">Hop {version} is ready to install</span>
   </div>
   <button class="link" on:click={onViewDetails}>What's new</button>
   <button class="close" on:click={onDismiss} aria-label="Dismiss">

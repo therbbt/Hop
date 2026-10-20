@@ -1,0 +1,32 @@
+[package]
+name = "hop-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+bytes = { workspace = true, features = ["serde"] }
+directories = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Talks to whatever implements the freedesktop Secret Service (GNOME
+# Keyring, KWallet's ksecretd, ...) over D-Bus. `keyring` with *no* backend
+# feature silently falls back to an in-memory mock store that never
+# persists anything — store() "succeeds" and every retrieve() then fails.
+keyring = { version = "3", default-features = false, features = ["sync-secret-service"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", default-features = false, features = ["apple-native"] }
+
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", default-features = false, features = ["windows-native"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros", "test-util"] }
