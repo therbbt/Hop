@@ -2551,7 +2551,7 @@ dependencies = [
 
 [[package]]
 name = "hop"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2580,7 +2580,7 @@ dependencies = [
 
 [[package]]
 name = "hop-core"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2596,7 +2596,7 @@ dependencies = [
 
 [[package]]
 name = "hop-rdp"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "base64 0.22.1",
  "hop-core",
@@ -2616,7 +2616,7 @@ dependencies = [
 
 [[package]]
 name = "hop-serial"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2630,7 +2630,7 @@ dependencies = [
 
 [[package]]
 name = "hop-sftp"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2646,7 +2646,7 @@ dependencies = [
 
 [[package]]
 name = "hop-shell"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2659,7 +2659,7 @@ dependencies = [
 
 [[package]]
 name = "hop-ssh"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2674,7 +2674,7 @@ dependencies = [
 
 [[package]]
 name = "hop-telnet"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "async-trait",
  "bytes",
