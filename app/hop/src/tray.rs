@@ -1,8 +1,8 @@
-//! System tray icon plus a global "Alt+T" hotkey that toggles the main
-//! window's visibility, and turns the window's own close button into the
-//! same hide-to-tray action. Once this is active, the tray menu's "Quit"
-//! item is the only way to actually exit — closing the window just hides
-//! it, matching FlashPad's tray behavior.
+//! System tray icon plus a global "Alt+T" hotkey (not on Hyprland) that
+//! toggles the main window's visibility, and turns the window's own close
+//! button into the same hide-to-tray action. Once this is active, the tray
+//! menu's "Quit" item is the only way to actually exit — closing the window
+//! just hides it, matching FlashPad's tray behavior.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -12,6 +12,8 @@ use tauri::plugin::TauriPlugin;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, WindowEvent, Wry};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+use crate::hyprland;
 
 const TRAY_ICON_BYTES: &[u8] = include_bytes!("../icons/tray-icon.png");
 const HOTKEY: &str = "Alt+T";
@@ -38,8 +40,14 @@ pub fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.set_focus();
+        hyprland::focus_window(&window);
         WINDOW_SHOWN.store(true, Ordering::SeqCst);
     }
+}
+
+/// Whether the main window is showing, rather than hidden in the tray.
+pub fn main_window_shown() -> bool {
+    WINDOW_SHOWN.load(Ordering::SeqCst)
 }
 
 pub fn toggle_main_window(app: &AppHandle) {
@@ -65,12 +73,14 @@ pub fn global_shortcut_plugin() -> TauriPlugin<Wry> {
 /// Registers the hotkey with the OS, builds the tray icon, and rewires the
 /// main window's close button — call once from `Builder::setup`.
 pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    // Non-fatal: the hotkey can be taken by another app, and on Wayland
-    // compositors like Hyprland a global grab never sees keys pressed in
-    // other windows anyway - there the compositor binds `hop --toggle`
-    // instead (see TOGGLE_FLAG). Either way the app should still start.
-    if let Err(err) = app.global_shortcut().register(HOTKEY) {
-        tracing::warn!("failed to register hotkey {HOTKEY}: {err}");
+    // Hyprland gets no Alt+T at all: a global grab never sees keys pressed
+    // in other windows there, and Super+Return (a repeat launch) is the way
+    // back to Hop instead. Elsewhere it's non-fatal - the hotkey can be
+    // taken by another app, and the app should still start.
+    if !hyprland::on_hyprland() {
+        if let Err(err) = app.global_shortcut().register(HOTKEY) {
+            tracing::warn!("failed to register hotkey {HOTKEY}: {err}");
+        }
     }
 
     let open_item = MenuItem::with_id(app, "open", "Open Hop", true, None::<&str>)?;

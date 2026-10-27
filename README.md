@@ -72,16 +72,18 @@ buttons or sidebar, just the terminal and a slim tab line once two or more
 tabs are open. Everything is a hotkey (`Ctrl+Shift+H` lists them), and
 `Ctrl+Shift+P` opens a command palette that searches saved sessions, open
 tabs and every action, including managing sessions and folders. Settings →
-Terminal → Keyboard-first layout turns it on or off on any desktop. A tiled
-window drops its rounded corners and shadow. Hyprland doesn't let apps grab global
-hotkeys, so the built-in `Alt+T` doesn't work there; bind the hotkey in your
-Hyprland config to run `hop --toggle` instead, which shows or hides the
-running instance. Launching `hop` again while it's running
-brings the existing window forward. On Omarchy:
+Terminal → Keyboard-first layout turns it on or off on any desktop; off a
+tiling compositor (e.g. Windows), drag the empty space above the terminal (or
+beside the tabs) to move the window. A tiled window drops its rounded
+corners and shadow. Hyprland has no `Alt+T` show/hide - launching `hop` again
+while it's running opens another window in the keyboard-first layout (like a
+terminal), or brings the main one back from the tray. On Omarchy, make it the
+terminal on `Super+Return`:
 
 ```lua
 -- ~/.config/hypr/bindings.lua
-o.bind("ALT + T", "Hop", "~/.local/bin/hop --toggle")
+hl.unbind("SUPER + RETURN")
+o.bind("SUPER + RETURN", "Terminal", "~/.local/bin/hop")
 ```
 
 ## Development

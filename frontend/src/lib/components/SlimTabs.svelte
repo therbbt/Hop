@@ -2,7 +2,8 @@
   // Keyboard-first layout's tab line (see App.svelte's keyboardUi): one
   // thin row of numbered tabs, matching Ctrl+Shift+1…9. Only rendered with
   // two or more tabs open - renaming, closing and the rest are hotkeys and
-  // palette actions there, so this only shows where you are.
+  // palette actions there, so this only shows where you are. Its empty
+  // stretch past the tabs drags the window, standing in for a title bar.
   import { createEventDispatcher } from "svelte";
   import type { Protocol, SessionState } from "../bridge";
 
@@ -12,7 +13,7 @@
   const dispatch = createEventDispatcher<{ select: { id: string } }>();
 </script>
 
-<div class="slim-tabs" role="tablist">
+<div class="slim-tabs" role="tablist" data-tauri-drag-region>
   {#each tabs as tab, i (tab.id)}
     <button
       class="slim-tab"

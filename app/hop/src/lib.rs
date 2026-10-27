@@ -4,6 +4,7 @@ mod hyprland;
 mod rdp_state;
 mod sftp_state;
 mod tray;
+mod windows;
 
 use adapter::AppState;
 use rdp_state::RdpState;
@@ -16,13 +17,26 @@ pub fn run() {
     tauri::Builder::default()
         // Must be registered first, so a repeat launch hands its args to the
         // running instance and exits before touching anything else.
-        // `hop --toggle` shows/hides the window: on Hyprland the global
-        // hotkey never sees keys pressed in other Wayland windows, so a
-        // compositor keybinding runs that instead. Any other repeat launch
-        // just brings the window forward.
+        // `hop --toggle` shows/hides the window, for a compositor
+        // keybinding where the global hotkey can't see other windows' keys
+        // - except on Hyprland, which has no toggle (see tray.rs). Any
+        // other repeat launch brings the window forward - or, in the keyboard-first layout,
+        // opens another window like a terminal would (see windows.rs),
+        // unless the main window is hidden in the tray.
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if args.iter().any(|arg| arg == tray::TOGGLE_FLAG) {
-                tray::toggle_main_window(app);
+                if !hyprland::on_hyprland() {
+                    tray::toggle_main_window(app);
+                }
+            } else if tray::main_window_shown() && windows::keyboard_ui() {
+                // Off the callback's thread: building a window from inside
+                // it can deadlock waiting on the event loop.
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(err) = windows::open_window(&app) {
+                        tracing::warn!("failed to open a new window: {err}");
+                    }
+                });
             } else {
                 tray::show_main_window(app);
             }
@@ -76,15 +90,8 @@ pub fn run() {
         ])
         .setup(|app| {
             tray::setup(app)?;
-            // tauri.conf.json's minimum size is wider than a half-screen
-            // tile on a laptop display, and Hyprland doesn't grow a tile to
-            // honour it - the webview stays at the minimum and is clipped
-            // to the tile, cutting off the window's edges. The compositor
-            // owns the size there, so drop the minimum.
-            if hyprland::on_hyprland() {
-                if let Some(window) = app.get_webview_window("main") {
-                    window.set_min_size(None::<tauri::Size>)?;
-                }
+            if let Some(window) = app.get_webview_window("main") {
+                hyprland::release_min_size(&window)?;
             }
             Ok(())
         })

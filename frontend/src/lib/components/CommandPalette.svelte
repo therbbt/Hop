@@ -9,6 +9,9 @@
     detail?: string;
     /** Right-aligned, e.g. the action's shortcut. */
     hint?: string;
+    /** Left out of the list until something is typed - keeps the root
+     * palette's opening list to tabs and sessions. */
+    searchOnly?: boolean;
     run: () => PaletteStep | void;
   }
 
@@ -37,7 +40,7 @@
   $: if (selected >= results.length) selected = Math.max(0, results.length - 1);
 
   function filter(items: PaletteItem[], q: string): PaletteItem[] {
-    if (!q.trim()) return items.slice(0, MAX_RESULTS);
+    if (!q.trim()) return items.filter((item) => !item.searchOnly).slice(0, MAX_RESULTS);
     return items
       .map((item) => ({ item, score: fuzzyScore(q, item.detail ? `${item.label} ${item.detail}` : item.label) }))
       .filter((r): r is { item: PaletteItem; score: number } => r.score !== null)

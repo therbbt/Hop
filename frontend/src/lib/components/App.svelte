@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import TitleBar from "./TitleBar.svelte";
   import ResizeHandles from "./ResizeHandles.svelte";
   import SessionTree from "./SessionTree.svelte";
@@ -141,6 +142,9 @@
   // Settings can force it on or off anywhere.
   let tilingWm = false;
   $: keyboardUi = config?.settings.keyboardUi ?? tilingWm;
+  // The shell stays hidden until the config and tilingWm are in, so the
+  // first frame isn't the regular layout flashing before the keyboard one.
+  let layoutReady = false;
   let paletteStep: PaletteStep | null = null;
 
   function toggleSidebar() {
@@ -200,6 +204,16 @@
     folderSlug: folderSlugForPane(panes[t.activePaneId], sessions, groups),
   }));
   $: activePane = activeTab ? (panes[activeTab.activePaneId] ?? null) : null;
+  $: activeSummary = tabSummaries.find((t) => t.id === activeTabId) ?? null;
+  // Saved session id -> the first tab with a pane connected through it, so
+  // the session pickers can tell what's already open and jump there.
+  $: openSessionTabs = tabs.reduce<Record<string, string>>((open, tab) => {
+    for (const paneId of collectPaneIds(tab.layout)) {
+      const savedId = panes[paneId]?.savedSessionId;
+      if (savedId && !open[savedId]) open[savedId] = tab.id;
+    }
+    return open;
+  }, {});
   $: activeSshOptions = activePane?.protocol === "ssh" ? (activePane.options as SshConnectOptions) : null;
 
   // CSS generic family keywords (monospace, ui-monospace, ...) must stay
@@ -288,6 +302,7 @@
   }
 
   onMount(async () => {
+    const tilingWmQuery = invoke<boolean>("uses_tiling_wm").catch(() => false);
     try {
       config = await getConfig();
       sessions = config.sessions;
@@ -297,15 +312,18 @@
     } catch {
       // No persisted config yet (first launch) — the rail just stays empty.
     }
+    tilingWm = await tilingWmQuery;
+    layoutReady = true;
 
     // Terminal-first: land on a working shell rather than the empty state,
     // same as opening a real terminal app.
     newShellTab();
 
-    void checkForAppUpdate();
+    // Just the main window - the keyboard-first layout's extra windows
+    // (see windows.rs) would each offer the same update again.
+    if (getCurrentWindow().label === "main") void checkForAppUpdate();
 
     isWindows = (await invoke<string>("platform_name").catch(() => "unknown")) === "windows";
-    tilingWm = await invoke<boolean>("uses_tiling_wm").catch(() => false);
   });
 
   // Settings stores a copy of the active theme's colors, which goes stale
@@ -322,7 +340,11 @@
 
   async function onSaveSettings(detail: HopConfig["settings"]) {
     showSettingsPanel = false;
-    const next: HopConfig = config ?? {
+    // Re-read rather than reuse this window's copy: another window (the
+    // keyboard-first layout can open several) may have saved sessions or
+    // groups since, and writing a stale copy back would drop them.
+    const latest = await getConfig().catch(() => config);
+    const next: HopConfig = latest ?? {
       schemaVersion: 3,
       groups: [],
       sessions,
@@ -764,6 +786,8 @@
       case "newSession":
         openNewSessionDialog("ssh");
         return;
+      case "sessions":
+        return sessionsPaletteStep();
       case "closePane":
         if (activeTab) closePane(activeTab.id, activeTab.activePaneId);
         return;
@@ -861,13 +885,39 @@
     const sessionItems: PaletteItem[] = sessions.map((session) => ({
       id: `session:${session.id}`,
       label: session.name,
-      detail: [session.protocol, folderPath(session.groupId)].filter(Boolean).join(" · "),
+      detail: sessionDetail(session),
       run: () => void connectToSavedSession(session),
     }));
     return {
       kind: "list",
-      placeholder: "Search sessions, tabs and commands…",
-      items: [...tabItems, ...sessionItems, ...paletteActions()],
+      placeholder: "Jump to a tab or session, or type a command…",
+      items: [...tabItems, ...sessionItems, ...paletteActions().map((item) => ({ ...item, searchOnly: true }))],
+    };
+  }
+
+  function sessionDetail(session: SavedSession): string {
+    return [session.protocol, folderPath(session.groupId), openSessionTabs[session.id] && "open"].filter(Boolean).join(" · ");
+  }
+
+  /** Every saved session, open ones first. Picking an open one jumps to
+   * its tab rather than connecting again - the main palette still does
+   * that. */
+  function sessionsPaletteStep(): PaletteStep {
+    const ordered = [...sessions].sort((a, b) => Number(!!openSessionTabs[b.id]) - Number(!!openSessionTabs[a.id]));
+    return {
+      kind: "list",
+      placeholder: sessions.length ? "Saved sessions…" : "No saved sessions yet (Ctrl+Shift+N to add one)",
+      items: ordered.map((session) => {
+        const tabId = openSessionTabs[session.id];
+        const tabIndex = tabId ? tabs.findIndex((t) => t.id === tabId) : -1;
+        return {
+          id: `sessions:${session.id}`,
+          label: session.name,
+          detail: sessionDetail(session),
+          hint: tabIndex >= 0 && tabIndex < 9 ? `Ctrl+Shift+${tabIndex + 1}` : undefined,
+          run: () => (tabId ? selectTab(tabId) : void connectToSavedSession(session)),
+        };
+      }),
     };
   }
 
@@ -987,7 +1037,7 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<div class="app-shell" class:squared={windowSquared} class:keyboard={keyboardUi}>
+<div class="app-shell" class:squared={windowSquared} class:keyboard={keyboardUi} style:visibility={layoutReady ? null : "hidden"}>
   <ResizeHandles squared={windowSquared} />
   <TitleBar
     hidden={keyboardUi}
@@ -1055,6 +1105,12 @@
     {/if}
     <div class="main">
       <div class="session-area">
+        {#if keyboardUi && !tilingWm}
+          <!-- No title bar in the keyboard-first layout, so off a tiling
+               compositor (e.g. Windows) the empty padding above the shell
+               drags the window instead - invisible, nothing to click. -->
+          <div class="drag-strip" data-tauri-drag-region></div>
+        {/if}
         {#each tabs as tab (tab.id)}
           <div class="tab-panes" class:hidden={tab.id !== activeTabId}>
             <PaneGrid
@@ -1098,6 +1154,24 @@
       </div>
     </div>
   </div>
+  {#if keyboardUi}
+    <!-- Keyboard-first layout's status line, in place of the title bar's
+         branding. -->
+    <div class="status-line">
+      {#if activeSummary}
+        <span class="status-current">
+          <span class="status-dot" data-state={activeSummary.state} data-protocol={activeSummary.protocol}></span>
+          <span class="status-title">{activeSummary.title}</span>
+          {#if activeSummary.folderSlug}<span>[{activeSummary.folderSlug}]</span>{/if}
+        </span>
+      {:else}
+        <span class="status-brand">Hop</span>
+      {/if}
+      {#if tabs.length > 1}
+        <span class="status-summary">{tabs.findIndex((t) => t.id === activeTabId) + 1}/{tabs.length}</span>
+      {/if}
+    </div>
+  {/if}
 
   {#if showSshDialog}
     <SshConnectDialog
@@ -1176,7 +1250,7 @@
     />
   {/if}
   {#if showShortcutsPanel}
-    <ShortcutsPanel keyboard={keyboardUi} on:cancel={() => (showShortcutsPanel = false)} />
+    <ShortcutsPanel keyboard={keyboardUi} tiling={tilingWm} on:cancel={() => (showShortcutsPanel = false)} />
   {/if}
   {#if showUpdateToast && !updateDetailsOpen}
     <UpdateToast version={availableUpdate?.version ?? ""} onViewDetails={() => (updateDetailsOpen = true)} onDismiss={dismissUpdate} />
@@ -1254,6 +1328,50 @@
     display: flex;
     min-height: 0;
   }
+  .status-line {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 0.7rem;
+    color: var(--fg-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    user-select: none;
+    gap: 1rem;
+  }
+  .status-current {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    white-space: nowrap;
+  }
+  .status-title {
+    color: var(--fg-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .status-summary {
+    margin-left: auto;
+    white-space: nowrap;
+  }
+  .status-line .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--status-disconnected);
+  }
+  .status-line .status-dot[data-state="connecting"] {
+    background: var(--status-connecting);
+  }
+  .status-line .status-dot[data-state="connected"] {
+    background: var(--status-connected-default);
+  }
+  .status-line .status-dot[data-state="connected"][data-protocol="ssh"] {
+    background: var(--status-connected);
+  }
   .main {
     flex: 1;
     display: flex;
@@ -1286,6 +1404,14 @@
     position: relative;
     display: flex;
     min-height: 0;
+  }
+  .drag-strip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--terminal-padding);
+    z-index: 1;
   }
   .tab-panes {
     position: absolute;
