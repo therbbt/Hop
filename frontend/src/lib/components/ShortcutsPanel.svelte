@@ -8,14 +8,15 @@
   /** Keyboard-first layout (see App.svelte): it has no sidebar, so the
    * sidebar toggle isn't listed. */
   export let keyboard = false;
+  /** Under a tiling compositor (Hyprland) there's no Alt+T (see tray.rs). */
+  export let tiling = false;
 
   $: SHORTCUTS = [
     ...APP_SHORTCUTS.filter((s) => !(keyboard && s.id === "toggleSidebar")).map(({ label, keys }) => ({ label, keys })),
     // A true OS-level global hotkey (works even when Hop isn't
     // focused) - registered in Rust (see tray.rs), not App.svelte's key
-    // handler like the rest. On Hyprland it's bound in the Hyprland
-    // config instead (see the README).
-    { label: "Show/hide Hop", keys: "Alt+T" },
+    // handler like the rest.
+    ...(tiling ? [] : [{ label: "Show/hide Hop", keys: "Alt+T" }]),
   ];
 
   let panelEl: HTMLDivElement;

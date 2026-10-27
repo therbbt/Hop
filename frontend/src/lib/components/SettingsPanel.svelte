@@ -520,6 +520,7 @@
   }
 </script>
 
+
 <svelte:window on:keydown={handleKeydown} on:mousedown={handleOutsideClick} />
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -544,30 +545,73 @@
           type="button"
           on:click={() => (activeTab = tab.id)}
         >
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+            {#if tab.id === "terminal"}
+              <rect x="1.5" y="2.5" width="13" height="11" />
+              <path d="M4 6l2 2-2 2M8 10.5h4" />
+            {:else if tab.id === "colors"}
+              <path d="M8 1.8a6.2 6.2 0 1 0 0 12.4c1 0 1.4-.6 1.4-1.3 0-.9-.8-1.2-.8-2 0-.7.6-1.2 1.3-1.2h1.6a2.7 2.7 0 0 0 2.7-2.7C14.2 4.2 11.4 1.8 8 1.8z" />
+              <circle cx="4.9" cy="7.2" r=".7" />
+              <circle cx="7.2" cy="4.6" r=".7" />
+              <circle cx="10.4" cy="5" r=".7" />
+            {:else}
+              <path d="M8 2v8M4.5 6.8 8 10.3l3.5-3.5M2.5 13.5h11" />
+            {/if}
+          </svg>
           {tab.label}
         </button>
       {/each}
     </div>
 
+    <!-- FlashPad's settings layout: a box per group with its title inside,
+         one row per setting - label on the left, control(s) on the right -
+         and one text size throughout; titles and details are only dimmer. -->
     <div class="content">
       {#if activeTab === "terminal"}
-        <section class="card">
-          <label class="field">
-            <span>Font family</span>
-            <input type="text" bind:value={fontFamily} placeholder="monospace" />
-          </label>
-          <label class="field">
-            <span>Font size</span>
-            <input type="number" bind:value={fontSize} min="8" max="32" />
-          </label>
-          <p class="hint">
-            Applies immediately to every open terminal, not just new ones. "monospace" uses your system's default
-            monospace font — type a specific font name instead if you have one installed you'd rather use.
-          </p>
+        <section class="settings-group">
+          <h3 class="settings-group-title">Font</h3>
+          <div class="setting">
+            <div class="setting-text">
+              <span class="setting-label">Font family</span>
+              <span class="setting-detail">"monospace" is the system default</span>
+            </div>
+            <input class="setting-input font-input" type="text" bind:value={fontFamily} placeholder="monospace" aria-label="Font family" />
+          </div>
+          <div class="setting">
+            <div class="setting-text">
+              <span class="setting-label">Font size</span>
+            </div>
+            <div class="stepper">
+              <button
+                class="step-btn"
+                type="button"
+                disabled={fontSize <= 8}
+                on:click={() => (fontSize = Math.max(8, fontSize - 1))}
+                aria-label="Decrease"
+              >
+                −
+              </button>
+              <input class="step-input" type="number" min="8" max="32" bind:value={fontSize} aria-label="Font size" />
+              <button
+                class="step-btn"
+                type="button"
+                disabled={fontSize >= 32}
+                on:click={() => (fontSize = Math.min(32, fontSize + 1))}
+                aria-label="Increase"
+              >
+                +
+              </button>
+            </div>
+          </div>
         </section>
-        <section class="card">
-          <div class="field">
-            <span>Keyboard-first layout</span>
+
+        <section class="settings-group">
+          <h3 class="settings-group-title">Layout</h3>
+          <div class="setting">
+            <div class="setting-text">
+              <span class="setting-label">Keyboard-first layout</span>
+              <span class="setting-detail">Hotkeys and Ctrl+Shift+P; Auto turns it on under Hyprland</span>
+            </div>
             <div class="segmented" role="radiogroup" aria-label="Keyboard-first layout">
               {#each LAYOUT_MODES as mode (mode.label)}
                 <button
@@ -582,153 +626,137 @@
               {/each}
             </div>
           </div>
-          <p class="hint">
-            Hides the title bar, buttons and sidebar; everything goes through hotkeys and the command palette
-            (Ctrl+Shift+P). Auto turns it on under Hyprland.
-          </p>
         </section>
       {:else if activeTab === "colors"}
-        <section class="card">
-          <p class="hint">
-            Only changes this machine's config — never shared or synced anywhere. Mostly text inside a terminal;
-            "App Interface" below is the exception — those change Hop's own chrome, not terminal text.
-          </p>
-
-          <div class="theme-row">
-            <div class="theme-picker">
-              <button
-                type="button"
-                class="theme-trigger"
-                bind:this={themeTriggerEl}
-                on:click={() => (themeMenuOpen = !themeMenuOpen)}
-                aria-haspopup="listbox"
-                aria-expanded={themeMenuOpen}
-              >
-                <span class="theme-trigger-label">{selectedThemeName}</span>
-                <svg
-                  class="caret"
-                  width="8"
-                  height="8"
-                  viewBox="0 0 10 10"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
+        <section class="settings-group">
+          <h3 class="settings-group-title">Theme</h3>
+          <div class="setting">
+            <div class="setting-text">
+              <span class="setting-label">Theme</span>
+            </div>
+            <div class="setting-controls">
+              <div class="theme-picker">
+                <button
+                  type="button"
+                  class="select"
+                  bind:this={themeTriggerEl}
+                  on:click={() => (themeMenuOpen = !themeMenuOpen)}
+                  aria-haspopup="listbox"
+                  aria-expanded={themeMenuOpen}
                 >
-                  <path d="M2.5 3.5L5 6.5L7.5 3.5" />
-                </svg>
-              </button>
-              {#if themeMenuOpen}
-                <div class="theme-menu" bind:this={themeMenuEl} role="listbox">
-                  <button
-                    type="button"
-                    class="theme-option"
-                    class:active={selectedThemeId === DEFAULT_THEME_ID}
-                    role="option"
-                    aria-selected={selectedThemeId === DEFAULT_THEME_ID}
-                    on:click={() => pickTheme(DEFAULT_THEME_ID)}
-                  >
-                    Default
-                  </button>
-                  <button
-                    type="button"
-                    class="theme-option"
-                    class:active={selectedThemeId === THERBBT_THEME_ID}
-                    role="option"
-                    aria-selected={selectedThemeId === THERBBT_THEME_ID}
-                    on:click={() => pickTheme(THERBBT_THEME_ID)}
-                  >
-                    therbbt
-                  </button>
-                  {#each savedThemes as theme (theme.id)}
+                  <span class="select-label">{selectedThemeName}</span>
+                  <svg class="caret" width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2.5 3.5L5 6.5L7.5 3.5" />
+                  </svg>
+                </button>
+                {#if themeMenuOpen}
+                  <div class="dropdown-menu" bind:this={themeMenuEl} role="listbox">
                     <button
                       type="button"
-                      class="theme-option"
-                      class:active={selectedThemeId === theme.id}
+                      class="dropdown-item"
+                      class:active={selectedThemeId === DEFAULT_THEME_ID}
                       role="option"
-                      aria-selected={selectedThemeId === theme.id}
-                      on:click={() => pickTheme(theme.id)}
+                      aria-selected={selectedThemeId === DEFAULT_THEME_ID}
+                      on:click={() => pickTheme(DEFAULT_THEME_ID)}
                     >
-                      {theme.name}
+                      <span>Default</span>
+                      <span class="dropdown-detail">built-in</span>
                     </button>
-                  {/each}
-                </div>
+                    <button
+                      type="button"
+                      class="dropdown-item"
+                      class:active={selectedThemeId === THERBBT_THEME_ID}
+                      role="option"
+                      aria-selected={selectedThemeId === THERBBT_THEME_ID}
+                      on:click={() => pickTheme(THERBBT_THEME_ID)}
+                    >
+                      <span>therbbt</span>
+                      <span class="dropdown-detail">built-in</span>
+                    </button>
+                    {#each savedThemes as theme (theme.id)}
+                      <button
+                        type="button"
+                        class="dropdown-item"
+                        class:active={selectedThemeId === theme.id}
+                        role="option"
+                        aria-selected={selectedThemeId === theme.id}
+                        on:click={() => pickTheme(theme.id)}
+                      >
+                        <span>{theme.name}</span>
+                      </button>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+              {#if !showNewThemeInput}
+                <button class="btn" type="button" on:click={startNewTheme}>New…</button>
+                <button class="btn" type="button" disabled={colorsLocked} on:click={deleteSelectedTheme}>Delete</button>
               {/if}
             </div>
-            {#if !showNewThemeInput}
-              <button class="btn" type="button" on:click={startNewTheme}>New theme…</button>
-              <button
-                class="btn"
-                type="button"
-                disabled={selectedThemeId === DEFAULT_THEME_ID || selectedThemeId === THERBBT_THEME_ID}
-                on:click={deleteSelectedTheme}
-              >
-                Delete
-              </button>
-            {/if}
           </div>
           {#if showNewThemeInput}
-            <div class="theme-row">
-              <input
-                class="theme-name-input"
-                type="text"
-                placeholder="Theme name"
-                bind:value={newThemeName}
-                bind:this={newThemeInputEl}
-                on:keydown|stopPropagation={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    confirmNewTheme();
-                  } else if (e.key === "Escape") {
-                    e.preventDefault();
-                    cancelNewTheme();
-                  }
-                }}
-              />
-              <button class="btn primary" type="button" disabled={!newThemeName.trim()} on:click={confirmNewTheme}>
-                Create
-              </button>
-              <button class="btn" type="button" on:click={cancelNewTheme}>Cancel</button>
+            <div class="setting-block">
+              <div class="setting-controls">
+                <input
+                  class="setting-input theme-name-input"
+                  type="text"
+                  placeholder="Theme name"
+                  bind:value={newThemeName}
+                  bind:this={newThemeInputEl}
+                  on:keydown|stopPropagation={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      confirmNewTheme();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelNewTheme();
+                    }
+                  }}
+                />
+                <button class="btn" type="button" disabled={!newThemeName.trim()} on:click={confirmNewTheme}>Create</button>
+                <button class="btn" type="button" on:click={cancelNewTheme}>Cancel</button>
+              </div>
             </div>
           {/if}
-          {#if colorsLocked}
-            <p class="hint">{selectedThemeName}'s colors are fixed. Click "New theme…" above to name one and start customizing.</p>
-          {:else}
-            <p class="hint">
-              Every swatch below updates the selected theme directly. Switch back to Default or therbbt any time —
-              their colors can't be changed, so they're always there as a clean starting point.
-            </p>
-          {/if}
-
-          {#each COLOR_GROUPS as group (group.title)}
-            <span class="group-title">{group.title}</span>
-            <div class="color-list">
-              {#each group.swatches as swatch (swatch.key)}
-                <label class="color-row" class:locked={colorsLocked} title={swatch.tooltip}>
-                  <input type="color" bind:value={colors[swatch.key]} aria-label={swatch.use} disabled={colorsLocked} />
-                  <span class="color-text">
-                    <span class="color-use">{swatch.use}</span>
-                    <span class="color-ansi-name">{swatch.secondary}</span>
-                  </span>
-                </label>
-              {/each}
-            </div>
-          {/each}
+          <p class="setting-message">
+            {#if colorsLocked}
+              {selectedThemeName}'s colors are fixed - "New…" copies them into a theme you can edit.
+            {:else}
+              Changes go straight into this theme. Only this machine's config, never synced.
+            {/if}
+          </p>
         </section>
+
+        {#each COLOR_GROUPS as group (group.title)}
+          <section class="settings-group">
+            <h3 class="settings-group-title">{group.title}</h3>
+            {#each group.swatches as swatch (swatch.key)}
+              <label class="setting color-row" class:locked={colorsLocked} title={swatch.tooltip}>
+                <span class="setting-text">
+                  <span class="setting-label">{swatch.use}</span>
+                  <span class="setting-detail">{swatch.secondary}</span>
+                </span>
+                <input type="color" bind:value={colors[swatch.key]} aria-label={swatch.use} disabled={colorsLocked} />
+              </label>
+            {/each}
+          </section>
+        {/each}
       {:else}
-        <section class="card">
-          <div class="update-row">
-            <span>{appVersion ? `Version ${appVersion}` : "Hop"}</span>
+        <section class="settings-group">
+          <h3 class="settings-group-title">Updates</h3>
+          <div class="setting">
+            <div class="setting-text">
+              <span class="setting-label">{appVersion ? `Hop ${appVersion}` : "Hop"}</span>
+              {#if updateCheckMessage}
+                <span class="setting-detail">{updateCheckMessage}</span>
+              {/if}
+            </div>
             <button class="btn" disabled={checkingForUpdate} on:click={checkForUpdates}>
               {checkingForUpdate ? "Checking…" : "Check for updates"}
             </button>
           </div>
-          {#if updateCheckMessage}
-            <p class="hint">{updateCheckMessage}</p>
-          {/if}
           {#if updateCheckError}
-            <p class="hint error">{updateCheckError}</p>
+            <p class="setting-message error">{updateCheckError}</p>
           {/if}
         </section>
       {/if}
@@ -755,27 +783,35 @@
   }
 
   .panel {
-    width: min(420px, 90vw);
-    max-height: 85vh;
-    background: var(--surface-2);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    width: min(560px, 92vw);
+    max-height: 82vh;
     display: flex;
     flex-direction: column;
+    background: var(--surface-1);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
     overflow: hidden;
+    font-size: 0.8rem;
+  }
+  /* Settings swaps the two backgrounds tokens.css gives every dialog (window
+     background behind, sidebar background for the groups), so it matches
+     FlashPad's settings. Needs the extra .overlay to outrank that
+     [role="dialog"] !important rule. */
+  .overlay .panel[role="dialog"] {
+    background: var(--surface-1) !important;
   }
 
   header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: var(--space-4) var(--space-4) 0;
+    padding: 0.75rem 0.75rem 0;
     flex-shrink: 0;
   }
 
   h2 {
     margin: 0;
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     font-weight: 600;
     color: var(--fg-primary);
   }
@@ -786,35 +822,36 @@
     justify-content: center;
     width: 1.5rem;
     height: 1.5rem;
-    border: none;
+    border: 1px solid var(--hairline);
     border-radius: var(--radius-sm);
-    background: var(--surface-3);
+    background: var(--surface-2);
     color: var(--fg-secondary);
     padding: 0;
     cursor: pointer;
   }
   .close:hover {
-    background: var(--surface-4);
     color: var(--fg-primary);
   }
 
   .tabbar {
     display: flex;
-    gap: var(--space-4);
-    padding: var(--space-3) var(--space-4) 0;
+    gap: 0.25rem;
+    padding: 0.75rem 0.75rem 0;
     border-bottom: 1px solid var(--hairline);
     flex-shrink: 0;
   }
 
   .tabbar-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
     border: none;
+    border-bottom: 2px solid transparent;
     background: transparent;
     color: var(--fg-secondary);
-    font-size: 0.76rem;
-    font-weight: 500;
-    padding: 0 0 var(--space-2);
+    font-size: 0.8rem;
+    padding: 0.45rem 0.3rem 0.6rem;
     margin-bottom: -1px;
-    border-bottom: 2px solid transparent;
     cursor: pointer;
   }
   .tabbar-btn:hover {
@@ -826,233 +863,295 @@
   }
 
   .content {
-    padding: var(--space-4);
+    flex: 1;
     overflow-y: auto;
+    padding: 0.75rem;
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: 0.6rem;
+  }
+
+  .settings-group {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
+    background: var(--surface-0);
+    padding: 0.55rem 0.75rem 0.2rem;
+  }
+
+  .settings-group-title {
+    margin: 0 0 0.15rem;
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--fg-secondary);
+  }
+
+  .setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 2.5rem;
+    padding: 0.35rem 0;
+  }
+
+  .setting + .setting,
+  .setting + .setting-block,
+  .setting + .setting-message,
+  .setting-block + .setting-message {
+    border-top: 1px solid var(--hairline);
+  }
+
+  .setting-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+
+  .setting-label {
+    color: var(--fg-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .setting-detail {
+    color: var(--fg-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .setting-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+  }
+
+  .setting-message {
+    margin: 0;
+    padding: 0.4rem 0;
+    color: var(--fg-secondary);
+  }
+  .setting-message.error {
+    color: var(--status-error);
+  }
+
+  .setting-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.5rem 0;
+  }
+
+  .setting-input {
+    height: 26px;
+    min-width: 0;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    color: var(--fg-primary);
+    font-size: 0.8rem;
+    padding: 0 0.5rem;
+  }
+  .setting-input:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .font-input {
+    width: 11rem;
+  }
+  .theme-name-input {
+    flex: 1;
   }
 
   .segmented {
     display: flex;
-    align-self: flex-start;
-    background: var(--surface-1);
-    border-radius: var(--radius-md);
-    padding: 2px;
+    flex-shrink: 0;
+    border: 1px solid var(--hairline);
   }
   .segmented button {
-    border: none;
-    border-radius: var(--radius-sm);
+    height: 24px;
+    border: 0;
     background: transparent;
     color: var(--fg-secondary);
-    font: inherit;
-    font-size: 0.72rem;
-    padding: 0.25rem 0.8rem;
+    font-size: 0.8rem;
+    padding: 0 0.6rem;
     cursor: pointer;
   }
+  .segmented button + button {
+    border-left: 1px solid var(--hairline);
+  }
+  .segmented button:hover {
+    color: var(--fg-primary);
+  }
   .segmented button.active {
-    background: var(--surface-4);
+    background: var(--surface-2);
+    color: var(--accent);
+  }
+
+  .stepper {
+    display: flex;
+    align-items: stretch;
+    height: 26px;
+  }
+  /* Native number-input spin arrows are unstylable OS widgets on WebKitGTK -
+     hidden in favor of the explicit step buttons. */
+  .step-input {
+    appearance: textfield;
+    -webkit-appearance: none;
+    width: 2.4rem;
+    text-align: center;
+    border: 1px solid var(--hairline);
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+    background: var(--surface-2);
     color: var(--fg-primary);
+    font-size: 0.8rem;
+    padding: 0 0.1rem;
   }
-  .card {
+  .step-input:focus {
+    outline: none;
+  }
+  .step-input::-webkit-outer-spin-button,
+  .step-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .step-btn {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .theme-row {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .theme-name-input {
-    flex: 1;
-    min-width: 0;
-    background: var(--surface-1);
-    border: none;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    border: 1px solid var(--hairline);
     border-radius: var(--radius-sm);
-    padding: 0.4rem 0.5rem;
+    background: var(--surface-2);
     color: var(--fg-primary);
-    font-size: 0.78rem;
+    font-size: 0.8rem;
+    line-height: 1;
+    cursor: pointer;
   }
-  .theme-name-input:focus-visible {
-    box-shadow: 0 0 0 2px var(--accent);
+  .step-btn:hover:not(:disabled) {
+    background: var(--surface-3);
+  }
+  .step-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 
-  /* Matches FolderSelect.svelte's own dropdown exactly — a plain trigger
-     button + popup list rather than a native <select>, so the open menu's
-     hover/selected highlight uses Hop's own accent instead of the OS's. */
+  /* A trigger button + popup list rather than a native <select>, whose open
+     list would use the OS's accent for hover/selection. */
   .theme-picker {
     position: relative;
-    flex: 1;
-    min-width: 0;
   }
-  .theme-trigger {
-    width: 100%;
+  .select {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.3rem;
-    background: var(--surface-1);
-    border: none;
+    gap: 0.4rem;
+    width: 11rem;
+    height: 26px;
+    border: 1px solid var(--hairline);
     border-radius: var(--radius-sm);
-    padding: 0.4rem 0.5rem;
+    background: var(--surface-2);
     color: var(--fg-primary);
-    font-size: 0.78rem;
-    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 0 0.6rem;
     text-align: left;
+    cursor: pointer;
   }
-  .theme-trigger:focus-visible {
+  .select:hover {
+    background: var(--surface-3);
+  }
+  .select:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px var(--accent);
+    border-color: var(--accent);
   }
-  .theme-trigger-label {
+  .select-label {
     flex: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .theme-trigger .caret {
+  .select .caret {
     flex-shrink: 0;
     color: var(--fg-secondary);
   }
-  .theme-menu {
+  .dropdown-menu {
     position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
+    top: calc(100% + 0.25rem);
     right: 0;
     z-index: 1001;
+    min-width: 100%;
     max-height: 200px;
     overflow-y: auto;
-    background: var(--surface-1);
-    border: 1px solid var(--hairline);
-    border-radius: var(--radius-md);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     padding: 0.25rem;
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
     display: flex;
     flex-direction: column;
     gap: 1px;
   }
-  .theme-option {
-    display: block;
+  .dropdown-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
     width: 100%;
-    border: none;
+    border: 0;
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--fg-primary);
     text-align: left;
-    padding: 0.35rem 0.5rem;
-    font-size: 0.78rem;
-    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    padding: 0.35rem 0.6rem;
+    font-size: 0.8rem;
     cursor: pointer;
   }
-  .theme-option:hover {
-    background: var(--surface-2);
-  }
-  .theme-option.active {
-    background: var(--surface-3);
-  }
-
-  .theme-row .btn {
-    flex-shrink: 0;
-    font-size: 0.72rem;
-    padding: 0.4rem 0.7rem;
-  }
-  .theme-row .btn:disabled {
-    background: var(--surface-2);
-    color: var(--fg-disabled);
-    cursor: not-allowed;
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 0.72rem;
-    color: var(--fg-secondary);
-  }
-
-  input[type="text"],
-  input[type="number"] {
+  .dropdown-item:hover {
     background: var(--surface-1);
-    border: none;
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 0.5rem;
-    color: var(--fg-primary);
-    font-size: 0.8rem;
   }
-  input[type="text"]:focus-visible,
-  input[type="number"]:focus-visible {
-    box-shadow: 0 0 0 2px var(--accent);
-  }
-
-  .group-title {
-    font-size: 0.64rem;
+  .dropdown-item.active {
+    color: var(--accent);
     font-weight: 600;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: var(--fg-tertiary);
-    margin-top: 2px;
   }
-
-  .color-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+  .dropdown-detail {
+    color: var(--fg-secondary);
+    font-weight: 400;
   }
 
   .color-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: 3px 0;
     cursor: pointer;
   }
-  /* Default's colors: shown, not editable — the swatch itself dims rather
-     than disappearing, so it's still obvious what color it currently is. */
+  /* A built-in theme's colors: shown, not editable - the swatch dims rather
+     than disappearing, so it's still obvious what color it is. */
   .color-row.locked {
     cursor: default;
   }
-  .color-row.locked .color-use {
-    color: var(--fg-tertiary);
+  .color-row.locked .setting-label {
+    color: var(--fg-secondary);
   }
   .color-row.locked input[type="color"] {
     opacity: 0.5;
     cursor: default;
   }
-
-  .color-text {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-  .color-use {
-    font-size: 0.72rem;
-    color: var(--fg-primary);
-    line-height: 1.25;
-  }
-  .color-ansi-name {
-    font-size: 0.62rem;
-    color: var(--fg-tertiary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .color-row input[type="color"] {
     flex-shrink: 0;
     width: 26px;
     height: 26px;
     padding: 0;
-    border: none;
+    border: 1px solid var(--hairline);
     border-radius: var(--radius-sm);
     background: none;
     cursor: pointer;
   }
-  /* Firefox/WebKitGTK both render a color swatch with its own inset
-     border/padding by default — flattening it to a plain filled rectangle
-     matches every other input in this app instead of looking like a
-     native OS control dropped into a themed panel. */
+  /* WebKitGTK gives a color swatch its own inset border/padding - flattened
+     to a plain filled square like the other controls. */
   .color-row input[type="color"]::-webkit-color-swatch-wrapper {
     padding: 0;
   }
@@ -1061,54 +1160,35 @@
     border-radius: var(--radius-sm);
   }
 
-  .hint {
-    margin: 0;
-    font-size: 0.68rem;
-    color: var(--fg-tertiary);
-  }
-  .hint.error {
-    color: var(--status-error);
-  }
-
-  .update-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    font-size: 0.78rem;
-    color: var(--fg-primary);
-  }
-
   .actions {
     display: flex;
     justify-content: flex-end;
-    gap: var(--space-2);
-    padding: 0 var(--space-4) var(--space-4);
+    gap: 0.4rem;
+    padding: 0.75rem;
+    border-top: 1px solid var(--hairline);
+    flex-shrink: 0;
   }
 
   .btn {
-    border: none;
-    border-radius: var(--radius-md);
-    background: var(--surface-3);
+    height: 26px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
     color: var(--fg-primary);
-    font-size: 0.78rem;
-    padding: 0.4rem 0.9rem;
+    font-size: 0.8rem;
+    padding: 0 0.7rem;
+    white-space: nowrap;
     cursor: pointer;
   }
-  .btn:hover {
-    background: var(--surface-4);
+  .btn:hover:not(:disabled) {
+    background: var(--surface-3);
+  }
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
   .btn.primary {
-    background: var(--accent);
-    color: var(--accent-fg);
-    font-weight: 600;
-  }
-  .btn.primary:hover {
-    filter: brightness(1.08);
-  }
-  .btn.primary:disabled {
-    background: var(--surface-4);
-    color: var(--fg-disabled);
-    cursor: not-allowed;
+    color: var(--accent);
+    border-color: var(--accent);
   }
 </style>

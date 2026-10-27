@@ -15,6 +15,7 @@ export type ShortcutId =
   | "palette"
   | "newShell"
   | "newSession"
+  | "sessions"
   | "closePane"
   | "splitRow"
   | "splitColumn"
@@ -54,6 +55,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: "palette", label: "Command palette", keys: "Ctrl+Shift+P", combos: [ctrlShift("p")] },
   { id: "newShell", label: "New local shell tab", keys: "Ctrl+Shift+T", combos: [ctrlShift("t")] },
   { id: "newSession", label: "New session…", keys: "Ctrl+Shift+N", combos: [ctrlShift("n")] },
+  { id: "sessions", label: "Saved sessions…", keys: "Ctrl+Shift+O", combos: [ctrlShift("o")] },
   { id: "closePane", label: "Close pane or tab", keys: "Ctrl+Shift+W", combos: [ctrlShift("w")] },
   { id: "splitRow", label: "Split pane right", keys: "Ctrl+Shift+D", combos: [ctrlShift("d")] },
   { id: "splitColumn", label: "Split pane down", keys: "Ctrl+Shift+E", combos: [ctrlShift("e")] },

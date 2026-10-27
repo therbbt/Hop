@@ -1,7 +1,7 @@
 {
   "identifier": "default",
-  "description": "Capabilities for the main Hop window",
-  "windows": ["main"],
+  "description": "Capabilities for Hop's windows (main, plus the keyboard-first layout's extra hop-N ones)",
+  "windows": ["main", "hop-*"],
   "permissions": [
     "core:default",
     "core:window:allow-close",
