@@ -50,6 +50,13 @@
     if (ref && "focus" in ref) ref.focus();
   }
 
+  /** Types text into a pane's terminal (RDP panes have none, so they're
+   * skipped). */
+  export function sendToPane(paneId: string, text: string) {
+    const ref = paneRefs[paneId];
+    if (ref && "sendInput" in ref) ref.sendInput(text);
+  }
+
   // Pure percentage math, recomputed whenever the tree shape or sizes
   // change — deliberately NOT what drives which Terminal/RdpView components
   // exist. Those render from a flat {#each} keyed only by paneId (below),

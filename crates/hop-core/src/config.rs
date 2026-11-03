@@ -21,6 +21,8 @@ pub struct Config {
     #[serde(default)]
     pub sessions: Vec<SavedSession>,
     #[serde(default)]
+    pub actions: Vec<FolderAction>,
+    #[serde(default)]
     pub settings: Settings,
 }
 
@@ -30,9 +32,25 @@ impl Default for Config {
             schema_version: CURRENT_SCHEMA_VERSION,
             groups: Vec::new(),
             sessions: Vec::new(),
+            actions: Vec::new(),
             settings: Settings::default(),
         }
     }
+}
+
+/// A user-made button in the keyboard-first layout's status line (e.g.
+/// "start" running `docker compose up`). It shows only while the active
+/// tab's saved session sits in one of `group_ids` (or a subfolder of one),
+/// and clicking it types `command` plus Enter into the focused pane — so
+/// on an SSH session it runs on that server, not locally.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderAction {
+    pub id: Uuid,
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub group_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
