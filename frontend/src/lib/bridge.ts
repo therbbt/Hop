@@ -238,10 +238,22 @@ export interface Theme {
   colors: TerminalColors;
 }
 
+/** A status-line button in the keyboard-first layout - see hop-core's
+ * `FolderAction`. Shows while the active tab's saved session is in one of
+ * `groupIds` (or a subfolder of one); clicking types `command` + Enter into
+ * the focused pane. */
+export interface FolderAction {
+  id: string;
+  name: string;
+  command: string;
+  groupIds: string[];
+}
+
 export interface HopConfig {
   schemaVersion: number;
   groups: Group[];
   sessions: SavedSession[];
+  actions: FolderAction[];
   settings: {
     terminalFontFamily: string;
     terminalFontSize: number;
@@ -340,6 +352,23 @@ export async function setGroupSlug(groupId: string, slug: string | null): Promis
  * siblings — see reorderSession(). */
 export async function reorderGroup(groupId: string, parentId: string | null, sortOrder: number): Promise<HopConfig> {
   return invoke<HopConfig>("reorder_group", { groupId, parentId, sortOrder });
+}
+
+// --- Folder actions -------------------------------------------------------
+
+export interface SaveActionInput {
+  id?: string | null;
+  name: string;
+  command: string;
+  groupIds: string[];
+}
+
+export async function saveAction(input: SaveActionInput): Promise<HopConfig> {
+  return invoke<HopConfig>("save_action", { ...input });
+}
+
+export async function deleteAction(actionId: string): Promise<HopConfig> {
+  return invoke<HopConfig>("delete_action", { actionId });
 }
 
 /** Pulls a saved session's password/passphrase back out of the keychain.

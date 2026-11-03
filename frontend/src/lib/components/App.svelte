@@ -25,6 +25,7 @@
   import ContextMenu, { type ContextMenuItem } from "./ContextMenu.svelte";
   import CommandPalette, { type PaletteItem, type PaletteStep } from "./CommandPalette.svelte";
   import SlimTabs from "./SlimTabs.svelte";
+  import ActionDialog from "./ActionDialog.svelte";
   import { SHORTCUTS, matchShortcut, type ShortcutId } from "../shortcuts";
   import type {
     Protocol,
@@ -37,6 +38,8 @@
     SaveSessionInput,
     SavedSession,
     Group,
+    FolderAction,
+    SaveActionInput,
     HopConfig,
     TerminalColors,
   } from "../bridge";
@@ -52,6 +55,8 @@
     setGroupSlug,
     reorderSession,
     reorderGroup,
+    saveAction,
+    deleteAction,
   } from "../bridge";
   import { nextAvailableNumber } from "../tabNumbering";
   import { terminalAppearanceVersion } from "../terminalAppearance";
@@ -100,6 +105,9 @@
   let contextMenu: { x: number; y: number; items: ContextMenuItem[] } | null = null;
   let sessions: SavedSession[] = [];
   let groups: Group[] = [];
+  let actions: FolderAction[] = [];
+  let showActionDialog = false;
+  let editingAction: FolderAction | null = null;
   let editingSshSession: SavedSession | null = null;
   let editingSerialSession: SavedSession | null = null;
   let editingShellSession: SavedSession | null = null;
@@ -214,6 +222,11 @@
     }
     return open;
   }, {});
+  // The folder actions to show in the status line: those set on the active
+  // pane's folder or any folder above it, same inheritance as slugs.
+  $: activeFolderIds = folderChainForPane(activePane ?? undefined, sessions, groups);
+  $: visibleActions =
+    activePane && activePane.protocol !== "rdp" ? actions.filter((a) => a.groupIds.some((id) => activeFolderIds.includes(id))) : [];
   $: activeSshOptions = activePane?.protocol === "ssh" ? (activePane.options as SshConnectOptions) : null;
 
   // CSS generic family keywords (monospace, ui-monospace, ...) must stay
@@ -307,6 +320,7 @@
       config = await getConfig();
       sessions = config.sessions;
       groups = config.groups;
+      actions = config.actions ?? [];
       applyTerminalFontVars(config.settings);
       applyTerminalColorVars(savedColors(config.settings));
     } catch {
@@ -348,6 +362,7 @@
       schemaVersion: 3,
       groups: [],
       sessions,
+      actions,
       settings: { terminalFontFamily: "JetBrains Mono", terminalFontSize: 14, terminalColors: {}, themes: [], activeThemeId: null },
     };
     next.settings = detail;
@@ -385,6 +400,22 @@
       groupId = group.parentId ?? null;
     }
     return null;
+  }
+
+  /** The pane's saved session's folder followed by each folder above it -
+   * empty for a pane with no saved session or one at the top level. Takes
+   * `sessions`/`groups` as parameters for the same reason as
+   * folderSlugForPane. */
+  function folderChainForPane(pane: PaneState | undefined, sessions: SavedSession[], groups: Group[]): string[] {
+    if (!pane?.savedSessionId) return [];
+    const session = sessions.find((s) => s.id === pane.savedSessionId);
+    const chain: string[] = [];
+    let groupId = session?.groupId ?? null;
+    while (groupId && chain.length < 32) {
+      chain.push(groupId);
+      groupId = groups.find((g) => g.id === groupId)?.parentId ?? null;
+    }
+    return chain;
   }
 
   function createPane(protocol: Protocol, title: string, options: SessionOptions, savedSessionId?: string, shellNumber?: number): string {
@@ -546,6 +577,34 @@
     }
   }
 
+  /** Types the action's command plus Enter into the active pane, then hands
+   * focus back to it so its output can be interacted with right away. */
+  function runAction(action: FolderAction) {
+    if (!activeTab) return;
+    const grid = paneGridRefs[activeTab.id];
+    grid?.sendToPane(activeTab.activePaneId, action.command + "\r");
+    grid?.focusPane(activeTab.activePaneId);
+  }
+
+  function openActionDialog(action: FolderAction | null) {
+    editingAction = action;
+    showActionDialog = true;
+  }
+
+  async function onSaveAction(input: SaveActionInput) {
+    showActionDialog = false;
+    editingAction = null;
+    const result = await saveAction(input);
+    actions = result.actions;
+  }
+
+  async function onDeleteAction(action: FolderAction) {
+    showActionDialog = false;
+    editingAction = null;
+    const result = await deleteAction(action.id);
+    actions = result.actions;
+  }
+
   async function onCreateFolder(name: string) {
     const result = await saveGroup({ name });
     groups = result.groups;
@@ -561,6 +620,7 @@
     const result = await deleteGroup(group.id);
     groups = result.groups;
     sessions = result.sessions;
+    actions = result.actions;
   }
 
   async function onToggleFolder(group: Group) {
@@ -751,6 +811,7 @@
     showSaveAsDialog ||
     showSettingsPanel ||
     showShortcutsPanel ||
+    showActionDialog ||
     updateDetailsOpen;
 
   function handleKeydown(event: KeyboardEvent) {
@@ -975,6 +1036,16 @@
           };
         }),
       ),
+      action("runAction", "Run folder action…", () => ({
+        kind: "list",
+        placeholder: visibleActions.length ? "Run which action?" : "No actions for this tab's folder",
+        items: visibleActions.map((a) => ({ id: `run:${a.id}`, label: a.name, detail: a.command, run: () => runAction(a) })),
+      })),
+      action("newAction", "New folder action…", () => openActionDialog(null)),
+      action("editAction", "Edit folder action…", () => pickAction("Edit which action?", (a) => openActionDialog(a))),
+      action("deleteAction", "Delete folder action…", () =>
+        pickAction("Delete which action?", (a) => confirmStep(`Delete action "${a.name}"`, () => void onDeleteAction(a))),
+      ),
       action("deleteFolder", "Delete folder…", () =>
         pickFolder("Delete which folder?", false, (groupId) => {
           const group = groups.find((g) => g.id === groupId)!;
@@ -997,6 +1068,19 @@
         label: s.name,
         detail: [s.protocol, folderPath(s.groupId)].filter(Boolean).join(" · "),
         run: () => onPick(s),
+      })),
+    };
+  }
+
+  function pickAction(placeholder: string, onPick: (a: FolderAction) => PaletteStep | void): PaletteStep {
+    return {
+      kind: "list",
+      placeholder: actions.length ? placeholder : "No folder actions yet",
+      items: actions.map((a) => ({
+        id: `pickAction:${a.id}`,
+        label: a.name,
+        detail: [a.command, a.groupIds.map(folderPath).filter(Boolean).join(", ")].filter(Boolean).join(" · "),
+        run: () => onPick(a),
       })),
     };
   }
@@ -1167,6 +1251,21 @@
       {:else}
         <span class="status-brand">Hop</span>
       {/if}
+      {#if visibleActions.length}
+        <span class="status-actions">
+          {#each visibleActions as action (action.id)}
+            <button
+              class="status-action"
+              tabindex="-1"
+              title={action.command}
+              on:mousedown|preventDefault={() => runAction(action)}
+              on:contextmenu|preventDefault={() => openActionDialog(action)}
+            >
+              {action.name}
+            </button>
+          {/each}
+        </span>
+      {/if}
       {#if tabs.length > 1}
         <span class="status-summary">{tabs.findIndex((t) => t.id === activeTabId) + 1}/{tabs.length}</span>
       {/if}
@@ -1216,6 +1315,19 @@
       on:connect={(e) => onNewSessionConnect(e.detail)}
       on:save={(e) => onSaveSessionOnly(e.detail)}
       on:cancel={() => (showNewSessionDialog = false)}
+    />
+  {/if}
+  {#if showActionDialog}
+    <ActionDialog
+      {groups}
+      editAction={editingAction}
+      initialGroupIds={activeFolderIds.slice(0, 1)}
+      on:save={(e) => onSaveAction(e.detail)}
+      on:delete={(e) => onDeleteAction(e.detail)}
+      on:cancel={() => {
+        showActionDialog = false;
+        editingAction = null;
+      }}
     />
   {/if}
   {#if showSaveAsDialog}
@@ -1351,6 +1463,33 @@
     color: var(--fg-primary);
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .status-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .status-action {
+    height: 16px;
+    padding: 0 0.5rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    color: var(--fg-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .status-action:hover {
+    background: var(--surface-3);
+    color: var(--fg-primary);
+  }
+  .status-action:active {
+    background: var(--accent);
+    color: var(--accent-fg);
   }
   .status-summary {
     margin-left: auto;

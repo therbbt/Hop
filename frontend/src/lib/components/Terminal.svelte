@@ -411,6 +411,12 @@
     term?.focus();
   }
 
+  /** Writes text into the session as if typed - App.svelte's folder
+   * actions use it to run their command in this pane. */
+  export function sendInput(text: string) {
+    if (sessionId) void writeSession(sessionId, new TextEncoder().encode(text));
+  }
+
   // Becoming the visible tab can reveal a stale size (it was 0x0 while
   // hidden) — fit() corrects the cell grid, but xterm.js also positions a
   // hidden <textarea> (its real keyboard-input target, kept aligned with

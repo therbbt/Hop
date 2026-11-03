@@ -68,6 +68,8 @@ pub fn run() {
             commands::set_group_slug,
             commands::reorder_session,
             commands::reorder_group,
+            commands::save_action,
+            commands::delete_action,
             commands::sftp_connect,
             commands::sftp_list,
             commands::sftp_read_file,
