@@ -3,7 +3,7 @@ use serde::Deserialize;
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
-use hop_core::config::{AuthMethod, Config, Group, SavedSession};
+use hop_core::config::{AuthMethod, Config, FolderAction, Group, SavedSession};
 use hop_core::session::Protocol;
 use hop_rdp::{RdpConnectOptions, RdpEvent};
 use hop_sftp::DirEntry;
@@ -357,6 +357,33 @@ pub fn set_group_slug(group_id: Uuid, slug: Option<String>) -> Result<Config, St
     if let Some(group) = config.groups.iter_mut().find(|g| g.id == group_id) {
         group.slug = slug;
     }
+    hop_core::config::save(&config).map_err(|e| e.to_string())?;
+    Ok(config)
+}
+
+// --- Folder actions ------------------------------------------------------
+// Status-line buttons in the keyboard-first layout — see `FolderAction`.
+
+/// Creates or replaces a folder action.
+#[tauri::command]
+pub fn save_action(id: Option<Uuid>, name: String, command: String, paths: Vec<String>) -> Result<Config, String> {
+    let _guard = hop_core::config::LOCK.lock().unwrap();
+    let id = id.unwrap_or_else(Uuid::new_v4);
+    let mut config = hop_core::config::load().map_err(|e| e.to_string())?;
+    let action = FolderAction { id, name, command, paths };
+    match config.actions.iter_mut().find(|a| a.id == id) {
+        Some(existing) => *existing = action,
+        None => config.actions.push(action),
+    }
+    hop_core::config::save(&config).map_err(|e| e.to_string())?;
+    Ok(config)
+}
+
+#[tauri::command]
+pub fn delete_action(action_id: Uuid) -> Result<Config, String> {
+    let _guard = hop_core::config::LOCK.lock().unwrap();
+    let mut config = hop_core::config::load().map_err(|e| e.to_string())?;
+    config.actions.retain(|a| a.id != action_id);
     hop_core::config::save(&config).map_err(|e| e.to_string())?;
     Ok(config)
 }

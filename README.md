@@ -75,7 +75,21 @@ tabs and every action, including managing sessions and folders. Settings →
 Terminal → Keyboard-first layout turns it on or off on any desktop; off a
 tiling compositor (e.g. Windows), drag the empty space above the terminal (or
 beside the tabs) to move the window. A tiled window drops its rounded
-corners and shadow. Hyprland has no `Alt+T` show/hide - launching `hop` again
+corners and shadow.
+
+Folder actions add buttons to the keyboard-first layout's status line, e.g.
+a `start` button that runs `docker compose up`. Create one with "New folder
+action…" in the palette and list the directories it belongs to (one or
+several, `~` allowed). The button only appears while the focused terminal is
+`cd`'d into one of them or a subdirectory. Clicking it types the command plus
+Enter into that terminal, so on an SSH tab it runs on that server.
+Right-clicking a button edits it, and "Run folder action…" in the palette runs
+one without the mouse. A local shell's directory is followed on its own (on
+Linux); elsewhere, and over SSH, Hop reads it from the shell's OSC 7 report
+or from a `user@host:dir` window title, which most distros' default bash
+prompt sets. Over SSH, `~` stands for `/home/<user>` (`/root` for root).
+
+Hyprland has no `Alt+T` show/hide - launching `hop` again
 while it's running opens another window in the keyboard-first layout (like a
 terminal), or brings the main one back from the tray. On Omarchy, make it the
 terminal on `Super+Return`:

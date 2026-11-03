@@ -26,6 +26,7 @@
   export let onResizeSplit: (splitId: string, sizes: number[]) => void;
   export let onPaneState: (id: string, state: SessionState) => void;
   export let onPaneTitle: (id: string, title: string) => void;
+  export let onPaneCwd: (id: string, path: string) => void;
   export let onPaneClosed: (id: string) => void;
 
   let containerEl: HTMLDivElement | undefined;
@@ -48,6 +49,13 @@
   export function focusPane(paneId: string) {
     const ref = paneRefs[paneId];
     if (ref && "focus" in ref) ref.focus();
+  }
+
+  /** Types text into a pane's terminal (RDP panes have none, so they're
+   * skipped). */
+  export function sendToPane(paneId: string, text: string) {
+    const ref = paneRefs[paneId];
+    if (ref && "sendInput" in ref) ref.sendInput(text);
   }
 
   // Pure percentage math, recomputed whenever the tree shape or sizes
@@ -108,6 +116,7 @@
               focused={active && paneId === activePaneId}
               on:state={(e) => onPaneState(paneId, e.detail)}
               on:title={(e) => onPaneTitle(paneId, e.detail.title)}
+              on:cwd={(e) => onPaneCwd(paneId, e.detail.path)}
               on:closed={() => onPaneClosed(paneId)}
             />
           {/if}

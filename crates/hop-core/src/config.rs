@@ -21,6 +21,8 @@ pub struct Config {
     #[serde(default)]
     pub sessions: Vec<SavedSession>,
     #[serde(default)]
+    pub actions: Vec<FolderAction>,
+    #[serde(default)]
     pub settings: Settings,
 }
 
@@ -30,9 +32,26 @@ impl Default for Config {
             schema_version: CURRENT_SCHEMA_VERSION,
             groups: Vec::new(),
             sessions: Vec::new(),
+            actions: Vec::new(),
             settings: Settings::default(),
         }
     }
+}
+
+/// A user-made button in the keyboard-first layout's status line (e.g.
+/// "start" running `docker compose up`). It shows only while the focused
+/// pane's working directory is one of `paths` (or inside one), and
+/// clicking it types `command` plus Enter into that pane — so on an SSH
+/// session it runs on that server, not locally. A path may start with `~`,
+/// which stands for the pane's own home directory.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderAction {
+    pub id: Uuid,
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

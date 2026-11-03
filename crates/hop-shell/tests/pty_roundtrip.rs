@@ -99,3 +99,34 @@ async fn shell_session_honors_shell_command_and_working_dir_options() {
 
     session.shutdown().await.expect("shutdown failed");
 }
+
+/// A `cd` in the shell is reported as a CwdChanged event (read from /proc,
+/// so Linux only), with no prompt setup needed on the shell's side.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn shell_session_reports_cwd_changes() {
+    let dir = std::env::temp_dir().canonicalize().expect("temp dir");
+    let mut session = ShellSession::new(ShellConnectOptions { shell_command: Some("/bin/sh".to_string()), ..Default::default() });
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    session.start(tx).await.expect("session failed to start");
+    wait_for_state(&mut rx, SessionState::Connected).await;
+
+    session
+        .write(Bytes::from(format!("cd '{}'\n", dir.display())))
+        .await
+        .expect("write failed");
+
+    let want = dir.to_string_lossy().into_owned();
+    timeout(Duration::from_secs(5), async {
+        loop {
+            match rx.recv().await.expect("session event stream ended unexpectedly") {
+                SessionEvent::CwdChanged { path } if path == want => return,
+                _ => {}
+            }
+        }
+    })
+    .await
+    .expect("never saw a CwdChanged event for the new directory");
+
+    session.shutdown().await.expect("shutdown failed");
+}

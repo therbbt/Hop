@@ -13,6 +13,8 @@ export type SessionState = "connecting" | "connected" | "disconnected";
 export type SessionEvent =
   | { type: "data"; data: number[] }
   | { type: "title_changed"; title: string }
+  /** A local shell's working directory changed (Linux only, see hop-shell). */
+  | { type: "cwd_changed"; path: string }
   | { type: "state_changed"; state: SessionState }
   | { type: "closed"; reason: string | null }
   | { type: "error"; message: string }
@@ -238,10 +240,22 @@ export interface Theme {
   colors: TerminalColors;
 }
 
+/** A status-line button in the keyboard-first layout - see hop-core's
+ * `FolderAction`. Shows while the focused pane's working directory is one
+ * of `paths` (or inside one; `~` is the pane's home); clicking types
+ * `command` + Enter into that pane. */
+export interface FolderAction {
+  id: string;
+  name: string;
+  command: string;
+  paths: string[];
+}
+
 export interface HopConfig {
   schemaVersion: number;
   groups: Group[];
   sessions: SavedSession[];
+  actions: FolderAction[];
   settings: {
     terminalFontFamily: string;
     terminalFontSize: number;
@@ -340,6 +354,23 @@ export async function setGroupSlug(groupId: string, slug: string | null): Promis
  * siblings — see reorderSession(). */
 export async function reorderGroup(groupId: string, parentId: string | null, sortOrder: number): Promise<HopConfig> {
   return invoke<HopConfig>("reorder_group", { groupId, parentId, sortOrder });
+}
+
+// --- Folder actions -------------------------------------------------------
+
+export interface SaveActionInput {
+  id?: string | null;
+  name: string;
+  command: string;
+  paths: string[];
+}
+
+export async function saveAction(input: SaveActionInput): Promise<HopConfig> {
+  return invoke<HopConfig>("save_action", { ...input });
+}
+
+export async function deleteAction(actionId: string): Promise<HopConfig> {
+  return invoke<HopConfig>("delete_action", { actionId });
 }
 
 /** Pulls a saved session's password/passphrase back out of the keychain.
@@ -513,6 +544,7 @@ export async function subscribeSession(
   const kinds: Array<[string, (payload: unknown) => SessionEvent]> = [
     ["data", (p) => p as SessionEvent],
     ["title", (p) => p as SessionEvent],
+    ["cwd", (p) => p as SessionEvent],
     ["state", (p) => p as SessionEvent],
     ["closed", (p) => p as SessionEvent],
     ["error", (p) => p as SessionEvent],

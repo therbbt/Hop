@@ -138,6 +138,7 @@ fn emit(app: &AppHandle, id: &str, event: &SessionEvent) {
     let kind = match event {
         SessionEvent::Data { .. } => "data",
         SessionEvent::TitleChanged { .. } => "title",
+        SessionEvent::CwdChanged { .. } => "cwd",
         SessionEvent::StateChanged { .. } => "state",
         SessionEvent::Closed { .. } => "closed",
         SessionEvent::Error { .. } => "error",

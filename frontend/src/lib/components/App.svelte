@@ -2,6 +2,7 @@
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { homeDir } from "@tauri-apps/api/path";
   import TitleBar from "./TitleBar.svelte";
   import ResizeHandles from "./ResizeHandles.svelte";
   import SessionTree from "./SessionTree.svelte";
@@ -25,6 +26,7 @@
   import ContextMenu, { type ContextMenuItem } from "./ContextMenu.svelte";
   import CommandPalette, { type PaletteItem, type PaletteStep } from "./CommandPalette.svelte";
   import SlimTabs from "./SlimTabs.svelte";
+  import ActionDialog from "./ActionDialog.svelte";
   import { SHORTCUTS, matchShortcut, type ShortcutId } from "../shortcuts";
   import type {
     Protocol,
@@ -37,6 +39,8 @@
     SaveSessionInput,
     SavedSession,
     Group,
+    FolderAction,
+    SaveActionInput,
     HopConfig,
     TerminalColors,
   } from "../bridge";
@@ -52,8 +56,11 @@
     setGroupSlug,
     reorderSession,
     reorderGroup,
+    saveAction,
+    deleteAction,
   } from "../bridge";
   import { nextAvailableNumber } from "../tabNumbering";
+  import { collapseHome, expandHome, pathWithin } from "../cwd";
   import { terminalAppearanceVersion } from "../terminalAppearance";
   import {
     collectPaneIds,
@@ -100,6 +107,11 @@
   let contextMenu: { x: number; y: number; items: ContextMenuItem[] } | null = null;
   let sessions: SavedSession[] = [];
   let groups: Group[] = [];
+  let actions: FolderAction[] = [];
+  // This machine's home, for `~` in a local pane's paths.
+  let localHome: string | null = null;
+  let showActionDialog = false;
+  let editingAction: FolderAction | null = null;
   let editingSshSession: SavedSession | null = null;
   let editingSerialSession: SavedSession | null = null;
   let editingShellSession: SavedSession | null = null;
@@ -214,6 +226,14 @@
     }
     return open;
   }, {});
+  // The folder actions to show in the status line: those with a path the
+  // active pane's working directory is in (or under). `~` means the pane's
+  // own home - this machine's for a local shell, the remote one's over SSH.
+  $: activeHome = paneHome(activePane, localHome);
+  $: activeCwd = activePane?.cwd ? expandHome(activePane.cwd, activeHome) : null;
+  $: visibleActions = activeCwd
+    ? actions.filter((a) => a.paths.some((p) => pathWithin(activeCwd!, expandHome(p, activeHome))))
+    : [];
   $: activeSshOptions = activePane?.protocol === "ssh" ? (activePane.options as SshConnectOptions) : null;
 
   // CSS generic family keywords (monospace, ui-monospace, ...) must stay
@@ -307,11 +327,13 @@
       config = await getConfig();
       sessions = config.sessions;
       groups = config.groups;
+      actions = config.actions ?? [];
       applyTerminalFontVars(config.settings);
       applyTerminalColorVars(savedColors(config.settings));
     } catch {
       // No persisted config yet (first launch) — the rail just stays empty.
     }
+    localHome = await homeDir().catch(() => null);
     tilingWm = await tilingWmQuery;
     layoutReady = true;
 
@@ -348,6 +370,7 @@
       schemaVersion: 3,
       groups: [],
       sessions,
+      actions,
       settings: { terminalFontFamily: "JetBrains Mono", terminalFontSize: 14, terminalColors: {}, themes: [], activeThemeId: null },
     };
     next.settings = detail;
@@ -385,6 +408,16 @@
       groupId = group.parentId ?? null;
     }
     return null;
+  }
+
+  /** A pane's home directory, for `~` in action paths. Over SSH it's the
+   * usual spot for the user, since Hop can't ask the server. */
+  function paneHome(pane: PaneState | null, localHome: string | null): string | null {
+    if (pane?.protocol === "ssh") {
+      const user = (pane.options as SshConnectOptions).username;
+      return user === "root" ? "/root" : `/home/${user}`;
+    }
+    return localHome;
   }
 
   function createPane(protocol: Protocol, title: string, options: SessionOptions, savedSessionId?: string, shellNumber?: number): string {
@@ -544,6 +577,34 @@
       const result = await saveSession(save);
       sessions = result.sessions;
     }
+  }
+
+  /** Types the action's command plus Enter into the active pane, then hands
+   * focus back to it so its output can be interacted with right away. */
+  function runAction(action: FolderAction) {
+    if (!activeTab) return;
+    const grid = paneGridRefs[activeTab.id];
+    grid?.sendToPane(activeTab.activePaneId, action.command + "\r");
+    grid?.focusPane(activeTab.activePaneId);
+  }
+
+  function openActionDialog(action: FolderAction | null) {
+    editingAction = action;
+    showActionDialog = true;
+  }
+
+  async function onSaveAction(input: SaveActionInput) {
+    showActionDialog = false;
+    editingAction = null;
+    const result = await saveAction(input);
+    actions = result.actions;
+  }
+
+  async function onDeleteAction(action: FolderAction) {
+    showActionDialog = false;
+    editingAction = null;
+    const result = await deleteAction(action.id);
+    actions = result.actions;
   }
 
   async function onCreateFolder(name: string) {
@@ -707,6 +768,12 @@
     panes = { ...panes, [paneId]: { ...pane, title } };
   }
 
+  function onPaneCwd(paneId: string, cwd: string) {
+    const pane = panes[paneId];
+    if (!pane || pane.cwd === cwd) return;
+    panes = { ...panes, [paneId]: { ...pane, cwd } };
+  }
+
   function onRename(id: string, title: string) {
     const trimmed = title.trim();
     if (!trimmed) return;
@@ -751,6 +818,7 @@
     showSaveAsDialog ||
     showSettingsPanel ||
     showShortcutsPanel ||
+    showActionDialog ||
     updateDetailsOpen;
 
   function handleKeydown(event: KeyboardEvent) {
@@ -975,6 +1043,16 @@
           };
         }),
       ),
+      action("runAction", "Run folder action…", () => ({
+        kind: "list",
+        placeholder: visibleActions.length ? "Run which action?" : "No actions for this directory",
+        items: visibleActions.map((a) => ({ id: `run:${a.id}`, label: a.name, detail: a.command, run: () => runAction(a) })),
+      })),
+      action("newAction", "New folder action…", () => openActionDialog(null)),
+      action("editAction", "Edit folder action…", () => pickAction("Edit which action?", (a) => openActionDialog(a))),
+      action("deleteAction", "Delete folder action…", () =>
+        pickAction("Delete which action?", (a) => confirmStep(`Delete action "${a.name}"`, () => void onDeleteAction(a))),
+      ),
       action("deleteFolder", "Delete folder…", () =>
         pickFolder("Delete which folder?", false, (groupId) => {
           const group = groups.find((g) => g.id === groupId)!;
@@ -997,6 +1075,19 @@
         label: s.name,
         detail: [s.protocol, folderPath(s.groupId)].filter(Boolean).join(" · "),
         run: () => onPick(s),
+      })),
+    };
+  }
+
+  function pickAction(placeholder: string, onPick: (a: FolderAction) => PaletteStep | void): PaletteStep {
+    return {
+      kind: "list",
+      placeholder: actions.length ? placeholder : "No folder actions yet",
+      items: actions.map((a) => ({
+        id: `pickAction:${a.id}`,
+        label: a.name,
+        detail: [a.command, a.paths.join(", ")].join(" · "),
+        run: () => onPick(a),
       })),
     };
   }
@@ -1126,6 +1217,7 @@
               onResizeSplit={(splitId, sizes) => resizeSplit(tab.id, splitId, sizes)}
               {onPaneState}
               {onPaneTitle}
+              {onPaneCwd}
               {onPaneClosed}
             />
           </div>
@@ -1166,6 +1258,21 @@
         </span>
       {:else}
         <span class="status-brand">Hop</span>
+      {/if}
+      {#if visibleActions.length}
+        <span class="status-actions">
+          {#each visibleActions as action (action.id)}
+            <button
+              class="status-action"
+              tabindex="-1"
+              title={action.command}
+              on:mousedown|preventDefault={() => runAction(action)}
+              on:contextmenu|preventDefault={() => openActionDialog(action)}
+            >
+              {action.name}
+            </button>
+          {/each}
+        </span>
       {/if}
       {#if tabs.length > 1}
         <span class="status-summary">{tabs.findIndex((t) => t.id === activeTabId) + 1}/{tabs.length}</span>
@@ -1216,6 +1323,18 @@
       on:connect={(e) => onNewSessionConnect(e.detail)}
       on:save={(e) => onSaveSessionOnly(e.detail)}
       on:cancel={() => (showNewSessionDialog = false)}
+    />
+  {/if}
+  {#if showActionDialog}
+    <ActionDialog
+      editAction={editingAction}
+      initialPath={activeCwd ? collapseHome(activeCwd, activeHome) : ""}
+      on:save={(e) => onSaveAction(e.detail)}
+      on:delete={(e) => onDeleteAction(e.detail)}
+      on:cancel={() => {
+        showActionDialog = false;
+        editingAction = null;
+      }}
     />
   {/if}
   {#if showSaveAsDialog}
@@ -1351,6 +1470,33 @@
     color: var(--fg-primary);
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .status-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .status-action {
+    height: 16px;
+    padding: 0 0.5rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    color: var(--fg-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .status-action:hover {
+    background: var(--surface-3);
+    color: var(--fg-primary);
+  }
+  .status-action:active {
+    background: var(--accent);
+    color: var(--accent-fg);
   }
   .status-summary {
     margin-left: auto;

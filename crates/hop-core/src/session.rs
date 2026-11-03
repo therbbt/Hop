@@ -32,6 +32,10 @@ pub enum SessionEvent {
     Data { data: Bytes },
     /// The session's own idea of a title changed (e.g. shell `cwd`, SSH banner).
     TitleChanged { title: String },
+    /// The session's working directory changed — only a local shell can
+    /// see this directly (see hop-shell); other protocols leave it to the
+    /// frontend, which reads it from the terminal's own escape sequences.
+    CwdChanged { path: String },
     /// Connection state changed (used to drive the status dot in the UI).
     StateChanged { state: SessionState },
     /// The session ended, cleanly or otherwise.

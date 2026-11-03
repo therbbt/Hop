@@ -28,6 +28,7 @@
     setHighlightUrl,
     setHighlightIpv6,
   } from "../terminalHighlight";
+  import { cwdFromTitle, parseOsc7 } from "../cwd";
   import Dialog from "./Dialog.svelte";
 
   export let protocol: Protocol = "shell";
@@ -42,7 +43,20 @@
     closed: { reason: string | null };
     ready: { sessionId: string };
     title: { title: string };
+    cwd: { path: string };
   }>();
+
+  // Where the working directory last came from, best first: the backend
+  // (a local shell's /proc, see hop-shell), the shell's own OSC 7 report,
+  // or the window title. A worse source is ignored once a better one has
+  // spoken, so they can't flap between two spellings of the same place.
+  let cwdSource: 0 | 1 | 2 | 3 = 0;
+
+  function reportCwd(path: string, source: 1 | 2 | 3) {
+    if (source < cwdSource) return;
+    cwdSource = source;
+    dispatch("cwd", { path });
+  }
 
   let container: HTMLDivElement;
   let term: Terminal;
@@ -248,6 +262,9 @@
       case "title_changed":
         dispatch("title", { title: event.title });
         break;
+      case "cwd_changed":
+        reportCwd(event.path, 3);
+        break;
       case "closed":
         // Guards term.onData/onResize below against writing to a session
         // that's already gone while the pane sits disconnected waiting for
@@ -279,6 +296,7 @@
     // session actually printed a prompt.
     recentOutput = "";
     cancelPendingPassword();
+    cwdSource = 0;
     sessionId = newSessionId();
     // Subscribed before the session exists on the backend at all — see
     // openSession's doc comment for why a local shell needs this ordering.
@@ -346,6 +364,15 @@
       if (matchShortcut(event)) return false;
       return true;
     });
+    term.parser.registerOscHandler(7, (data) => {
+      const path = parseOsc7(data);
+      if (path) reportCwd(path, 2);
+      return true;
+    });
+    term.onTitleChange((title) => {
+      const path = cwdFromTitle(title);
+      if (path) reportCwd(path, 1);
+    });
     term.open(container);
     fitAddon.fit();
 
@@ -409,6 +436,12 @@
    * command palette. */
   export function focus() {
     term?.focus();
+  }
+
+  /** Writes text into the session as if typed - App.svelte's folder
+   * actions use it to run their command in this pane. */
+  export function sendInput(text: string) {
+    if (sessionId) void writeSession(sessionId, new TextEncoder().encode(text));
   }
 
   // Becoming the visible tab can reveal a stale size (it was 0x0 while
