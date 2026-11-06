@@ -2,6 +2,7 @@
   import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { homeDir } from "@tauri-apps/api/path";
   import TitleBar from "./TitleBar.svelte";
   import ResizeHandles from "./ResizeHandles.svelte";
   import SessionTree from "./SessionTree.svelte";
@@ -57,8 +58,10 @@
     reorderGroup,
     saveAction,
     deleteAction,
+    runStatusCheck,
   } from "../bridge";
   import { nextAvailableNumber } from "../tabNumbering";
+  import { collapseHome, expandHome, pathWithin } from "../cwd";
   import { terminalAppearanceVersion } from "../terminalAppearance";
   import {
     collectPaneIds,
@@ -81,6 +84,13 @@
      * outline — distinct from `active`-ness, which is about the owning tab. */
     activePaneId: string;
   }
+
+  /** A folder action's running check's answer - see FolderAction. */
+  type ActionStatus = "running" | "stopped" | "unknown";
+  const STATUS_POLL_MS = 5000;
+  /** Extra checks after clicking an action, so the button flips soon after
+   * an `up -d` or `down` finishes instead of on the next poll. */
+  const STATUS_RECHECK_MS = [1000, 3000];
 
   let tabs: Tab[] = [];
   let panes: Record<string, PaneState> = {};
@@ -106,7 +116,18 @@
   let sessions: SavedSession[] = [];
   let groups: Group[] = [];
   let actions: FolderAction[] = [];
+  // This machine's home, for `~` in a local pane's paths.
+  let localHome: string | null = null;
   let showActionDialog = false;
+  let ranActionId: string | null = null;
+  let ranActionTimer: ReturnType<typeof setTimeout> | undefined;
+  // Results of folder actions' running checks, by statusKey(): one per
+  // pane, directory and action, so switching panes never shows another
+  // pane's answer.
+  let actionStatuses: Record<string, ActionStatus> = {};
+  const statusChecksInFlight = new Set<string>();
+  let statusPollTimer: ReturnType<typeof setInterval> | undefined;
+  let statusRecheckTimers: ReturnType<typeof setTimeout>[] = [];
   let editingAction: FolderAction | null = null;
   let editingSshSession: SavedSession | null = null;
   let editingSerialSession: SavedSession | null = null;
@@ -212,7 +233,6 @@
     folderSlug: folderSlugForPane(panes[t.activePaneId], sessions, groups),
   }));
   $: activePane = activeTab ? (panes[activeTab.activePaneId] ?? null) : null;
-  $: activeSummary = tabSummaries.find((t) => t.id === activeTabId) ?? null;
   // Saved session id -> the first tab with a pane connected through it, so
   // the session pickers can tell what's already open and jump there.
   $: openSessionTabs = tabs.reduce<Record<string, string>>((open, tab) => {
@@ -222,12 +242,22 @@
     }
     return open;
   }, {});
-  // The folder actions to show in the status line: those set on the active
-  // pane's folder or any folder above it, same inheritance as slugs.
-  $: activeFolderIds = folderChainForPane(activePane ?? undefined, sessions, groups);
-  $: visibleActions =
-    activePane && activePane.protocol !== "rdp" ? actions.filter((a) => a.groupIds.some((id) => activeFolderIds.includes(id))) : [];
+  // The folder actions to show in the status line: those with a path the
+  // active pane's working directory is in (or under). `~` means the pane's
+  // own home - this machine's for a local shell, the remote one's over SSH.
+  $: activeHome = paneHome(activePane, localHome);
+  $: activeCwd = activePane?.cwd ? expandHome(activePane.cwd, activeHome) : null;
+  $: visibleActions = activeCwd
+    ? actions.filter((a) => a.paths.some((p) => pathWithin(activeCwd!, expandHome(p, activeHome))))
+    : [];
   $: activeSshOptions = activePane?.protocol === "ssh" ? (activePane.options as SshConnectOptions) : null;
+  // Restarts the running-check poll only when what it would check changes -
+  // not on every unrelated pane update (a title change, say).
+  $: statusPollKey =
+    activePane?.cwd && activeTab
+      ? [activeTab.id, activePane.id, activePane.cwd, ...visibleActions.filter((a) => a.statusCommand).map((a) => a.id + a.statusCommand)].join("\n")
+      : "";
+  $: restartStatusPoll(statusPollKey);
 
   // CSS generic family keywords (monospace, ui-monospace, ...) must stay
   // unquoted — quoting one turns it into a request for an actual font
@@ -326,6 +356,7 @@
     } catch {
       // No persisted config yet (first launch) — the rail just stays empty.
     }
+    localHome = await homeDir().catch(() => null);
     tilingWm = await tilingWmQuery;
     layoutReady = true;
 
@@ -402,20 +433,14 @@
     return null;
   }
 
-  /** The pane's saved session's folder followed by each folder above it -
-   * empty for a pane with no saved session or one at the top level. Takes
-   * `sessions`/`groups` as parameters for the same reason as
-   * folderSlugForPane. */
-  function folderChainForPane(pane: PaneState | undefined, sessions: SavedSession[], groups: Group[]): string[] {
-    if (!pane?.savedSessionId) return [];
-    const session = sessions.find((s) => s.id === pane.savedSessionId);
-    const chain: string[] = [];
-    let groupId = session?.groupId ?? null;
-    while (groupId && chain.length < 32) {
-      chain.push(groupId);
-      groupId = groups.find((g) => g.id === groupId)?.parentId ?? null;
+  /** A pane's home directory, for `~` in action paths. Over SSH it's the
+   * usual spot for the user, since Hop can't ask the server. */
+  function paneHome(pane: PaneState | null, localHome: string | null): string | null {
+    if (pane?.protocol === "ssh") {
+      const user = (pane.options as SshConnectOptions).username;
+      return user === "root" ? "/root" : `/home/${user}`;
     }
-    return chain;
+    return localHome;
   }
 
   function createPane(protocol: Protocol, title: string, options: SessionOptions, savedSessionId?: string, shellNumber?: number): string {
@@ -577,13 +602,87 @@
     }
   }
 
-  /** Types the action's command plus Enter into the active pane, then hands
-   * focus back to it so its output can be interacted with right away. */
+  function statusKey(paneId: string, cwd: string, actionId: string): string {
+    return `${paneId}\n${cwd}\n${actionId}`;
+  }
+
+  /** What the action's running check last said for the focused pane, or
+   * null when it has no check. */
+  function actionStatus(action: FolderAction, statuses: Record<string, ActionStatus>): ActionStatus | null {
+    if (!action.statusCommand) return null;
+    if (!activePane?.cwd) return "unknown";
+    return statuses[statusKey(activePane.id, activePane.cwd, action.id)] ?? "unknown";
+  }
+
+  /** Whether a click should stop rather than start: only once the check has
+   * actually said running, and only if there's a stop command to run. */
+  function actionStops(action: FolderAction, statuses: Record<string, ActionStatus>): boolean {
+    return !!action.stopCommand && actionStatus(action, statuses) === "running";
+  }
+
+  /** Runs the visible actions' running checks for the focused pane now,
+   * then every few seconds while it stays in the same directory. */
+  function restartStatusPoll(key: string) {
+    clearInterval(statusPollTimer);
+    statusRecheckTimers.forEach(clearTimeout);
+    statusRecheckTimers = [];
+    if (!key) return;
+    checkActionStatuses();
+    statusPollTimer = setInterval(() => {
+      // No one's looking - nothing to keep fresh.
+      if (!document.hidden) checkActionStatuses();
+    }, STATUS_POLL_MS);
+  }
+
+  function checkActionStatuses() {
+    if (!activeTab || !activePane?.cwd) return;
+    const tabId = activeTab.id;
+    const paneId = activePane.id;
+    const cwd = activePane.cwd;
+    for (const action of visibleActions) {
+      if (action.statusCommand) void checkActionStatus(tabId, paneId, cwd, action.id, action.statusCommand);
+    }
+  }
+
+  async function checkActionStatus(tabId: string, paneId: string, cwd: string, actionId: string, command: string) {
+    const key = statusKey(paneId, cwd, actionId);
+    // A slow check (a busy server, say) shouldn't pile up repeats behind it.
+    if (statusChecksInFlight.has(key)) return;
+    const sessionId = paneGridRefs[tabId]?.paneSessionId(paneId);
+    let status: ActionStatus = "unknown";
+    if (sessionId) {
+      statusChecksInFlight.add(key);
+      try {
+        status = (await runStatusCheck(sessionId, command, cwd)) === 0 ? "running" : "stopped";
+      } catch {
+        // Timed out, disconnected, or a shell that can't run commands on
+        // the side (see hop-shell's command_runner).
+      } finally {
+        statusChecksInFlight.delete(key);
+      }
+    }
+    actionStatuses = { ...actionStatuses, [key]: status };
+  }
+
+  /** Types the action's command plus Enter into the active pane - or its
+   * stop command, while its check says it's running - then hands focus
+   * back to it so its output can be interacted with right away. */
   function runAction(action: FolderAction) {
     if (!activeTab) return;
+    const command = actionStops(action, actionStatuses) ? action.stopCommand! : action.command;
+    // A brief flash on the button, so a click visibly did something even
+    // when the command's output lands somewhere off screen.
+    ranActionId = action.id;
+    clearTimeout(ranActionTimer);
+    ranActionTimer = setTimeout(() => (ranActionId = null), 450);
     const grid = paneGridRefs[activeTab.id];
-    grid?.sendToPane(activeTab.activePaneId, action.command + "\r");
+    grid?.sendToPane(activeTab.activePaneId, command + "\r");
     grid?.focusPane(activeTab.activePaneId);
+    // Starting or stopping takes a moment; look again soon rather than
+    // waiting out the poll, so the button flips about when it's done.
+    if (action.statusCommand) {
+      for (const delay of STATUS_RECHECK_MS) statusRecheckTimers.push(setTimeout(checkActionStatuses, delay));
+    }
   }
 
   function openActionDialog(action: FolderAction | null) {
@@ -620,7 +719,6 @@
     const result = await deleteGroup(group.id);
     groups = result.groups;
     sessions = result.sessions;
-    actions = result.actions;
   }
 
   async function onToggleFolder(group: Group) {
@@ -765,6 +863,12 @@
     const pane = panes[paneId];
     if (!pane || pane.renamed) return;
     panes = { ...panes, [paneId]: { ...pane, title } };
+  }
+
+  function onPaneCwd(paneId: string, cwd: string) {
+    const pane = panes[paneId];
+    if (!pane || pane.cwd === cwd) return;
+    panes = { ...panes, [paneId]: { ...pane, cwd } };
   }
 
   function onRename(id: string, title: string) {
@@ -1038,7 +1142,7 @@
       ),
       action("runAction", "Run folder action…", () => ({
         kind: "list",
-        placeholder: visibleActions.length ? "Run which action?" : "No actions for this tab's folder",
+        placeholder: visibleActions.length ? "Run which action?" : "No actions for this directory",
         items: visibleActions.map((a) => ({ id: `run:${a.id}`, label: a.name, detail: a.command, run: () => runAction(a) })),
       })),
       action("newAction", "New folder action…", () => openActionDialog(null)),
@@ -1079,7 +1183,7 @@
       items: actions.map((a) => ({
         id: `pickAction:${a.id}`,
         label: a.name,
-        detail: [a.command, a.groupIds.map(folderPath).filter(Boolean).join(", ")].filter(Boolean).join(" · "),
+        detail: [a.command, a.paths.join(", ")].join(" · "),
         run: () => onPick(a),
       })),
     };
@@ -1210,6 +1314,7 @@
               onResizeSplit={(splitId, sizes) => resizeSplit(tab.id, splitId, sizes)}
               {onPaneState}
               {onPaneTitle}
+              {onPaneCwd}
               {onPaneClosed}
             />
           </div>
@@ -1239,29 +1344,31 @@
     </div>
   </div>
   {#if keyboardUi}
-    <!-- Keyboard-first layout's status line, in place of the title bar's
-         branding. -->
+    <!-- Keyboard-first layout's status line: the folder actions for the
+         focused terminal's directory, and where you are among the tabs. -->
     <div class="status-line">
-      {#if activeSummary}
-        <span class="status-current">
-          <span class="status-dot" data-state={activeSummary.state} data-protocol={activeSummary.protocol}></span>
-          <span class="status-title">{activeSummary.title}</span>
-          {#if activeSummary.folderSlug}<span>[{activeSummary.folderSlug}]</span>{/if}
-        </span>
-      {:else}
-        <span class="status-brand">Hop</span>
-      {/if}
       {#if visibleActions.length}
         <span class="status-actions">
           {#each visibleActions as action (action.id)}
+            {@const status = actionStatus(action, actionStatuses)}
+            {@const stops = actionStops(action, actionStatuses)}
             <button
               class="status-action"
+              class:ran={action.id === ranActionId}
               tabindex="-1"
-              title={action.command}
-              on:mousedown|preventDefault={() => runAction(action)}
+              title="{stops ? action.stopCommand : action.command}{status ? ` (${status})` : ''} - right-click to edit"
+              on:mousedown|preventDefault={(e) => e.button === 0 && runAction(action)}
               on:contextmenu|preventDefault={() => openActionDialog(action)}
             >
-              {action.name}
+              {#if stops}
+                <svg class="status-action-icon" viewBox="0 0 8 8" aria-hidden="true"><rect x="1.5" y="1.5" width="5" height="5" /></svg>
+              {:else}
+                <svg class="status-action-icon" viewBox="0 0 8 8" aria-hidden="true"><path d="M1.5 1 L6.5 4 L1.5 7 Z" /></svg>
+              {/if}
+              <span>{stops ? (action.stopName ?? "stop") : action.name}</span>
+              {#if status}
+                <span class="status-action-dot" data-status={status}></span>
+              {/if}
             </button>
           {/each}
         </span>
@@ -1319,9 +1426,8 @@
   {/if}
   {#if showActionDialog}
     <ActionDialog
-      {groups}
       editAction={editingAction}
-      initialGroupIds={activeFolderIds.slice(0, 1)}
+      initialPath={activeCwd ? collapseHome(activeCwd, activeHome) : ""}
       on:save={(e) => onSaveAction(e.detail)}
       on:delete={(e) => onDeleteAction(e.detail)}
       on:cancel={() => {
@@ -1401,6 +1507,8 @@
      window_padding_width). */
   .app-shell.keyboard {
     --terminal-padding: 14px;
+    /* Less below the text: the status line under it adds its own space. */
+    --terminal-padding-bottom: 6px;
   }
   .app-shell.squared {
     border-radius: 0;
@@ -1444,72 +1552,88 @@
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    height: 20px;
-    padding: 0 0.7rem;
+    height: 30px;
+    /* The extra bottom padding lifts the buttons off the window's bottom
+       edge; it grows the bar downward only, so the gap above them to the
+       terminal stays the same. */
+    padding: 0 0.7rem 12px;
     color: var(--fg-tertiary);
     font-family: var(--font-mono);
     font-size: 0.7rem;
     user-select: none;
     gap: 1rem;
   }
-  .status-current {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    min-width: 0;
-    white-space: nowrap;
-  }
-  .status-title {
-    color: var(--fg-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
   .status-actions {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.35rem;
     min-width: 0;
     overflow: hidden;
   }
   .status-action {
-    height: 16px;
-    padding: 0 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    height: 18px;
+    padding: 0 0.6rem 0 0.5rem;
     border: none;
     border-radius: var(--radius-sm);
     background: var(--surface-2);
     color: var(--fg-secondary);
     font-family: var(--font-mono);
     font-size: 0.68rem;
+    line-height: 1;
     white-space: nowrap;
     cursor: pointer;
+    transition:
+      background 120ms ease,
+      color 120ms ease;
+  }
+  .status-action-icon {
+    width: 7px;
+    height: 7px;
+    flex-shrink: 0;
+    fill: var(--accent);
+    transition: fill 120ms ease;
   }
   .status-action:hover {
-    background: var(--surface-3);
+    background: var(--accent-dim);
     color: var(--fg-primary);
   }
-  .status-action:active {
+  .status-action:active,
+  .status-action.ran {
     background: var(--accent);
     color: var(--accent-fg);
   }
-  .status-summary {
-    margin-left: auto;
-    white-space: nowrap;
+  .status-action:active .status-action-icon,
+  .status-action.ran .status-action-icon {
+    fill: var(--accent-fg);
   }
-  .status-line .status-dot {
+  /* The running check's answer, in the session dots' colors: filled
+     accent running, filled grey stopped, hollow while unknown (not checked yet, or the check failed). */
+  .status-action-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     flex-shrink: 0;
+    margin-left: 0.1rem;
+    box-sizing: border-box;
+    border: 1px solid var(--fg-tertiary);
+  }
+  .status-action-dot[data-status="running"] {
+    border: none;
+    background: var(--status-connected);
+  }
+  .status-action-dot[data-status="stopped"] {
+    border: none;
     background: var(--status-disconnected);
   }
-  .status-line .status-dot[data-state="connecting"] {
-    background: var(--status-connecting);
+  .status-action.ran .status-action-dot {
+    border-color: var(--accent-fg);
   }
-  .status-line .status-dot[data-state="connected"] {
-    background: var(--status-connected-default);
-  }
-  .status-line .status-dot[data-state="connected"][data-protocol="ssh"] {
-    background: var(--status-connected);
+  .status-summary {
+    margin-left: auto;
+    white-space: nowrap;
   }
   .main {
     flex: 1;

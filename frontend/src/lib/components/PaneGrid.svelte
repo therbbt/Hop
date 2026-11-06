@@ -26,6 +26,7 @@
   export let onResizeSplit: (splitId: string, sizes: number[]) => void;
   export let onPaneState: (id: string, state: SessionState) => void;
   export let onPaneTitle: (id: string, title: string) => void;
+  export let onPaneCwd: (id: string, path: string) => void;
   export let onPaneClosed: (id: string) => void;
 
   let containerEl: HTMLDivElement | undefined;
@@ -55,6 +56,13 @@
   export function sendToPane(paneId: string, text: string) {
     const ref = paneRefs[paneId];
     if (ref && "sendInput" in ref) ref.sendInput(text);
+  }
+
+  /** A terminal pane's live backend session id (null for RDP, or while
+   * disconnected). */
+  export function paneSessionId(paneId: string): string | null {
+    const ref = paneRefs[paneId];
+    return ref && "getSessionId" in ref ? ref.getSessionId() : null;
   }
 
   // Pure percentage math, recomputed whenever the tree shape or sizes
@@ -115,6 +123,7 @@
               focused={active && paneId === activePaneId}
               on:state={(e) => onPaneState(paneId, e.detail)}
               on:title={(e) => onPaneTitle(paneId, e.detail.title)}
+              on:cwd={(e) => onPaneCwd(paneId, e.detail.path)}
               on:closed={() => onPaneClosed(paneId)}
             />
           {/if}

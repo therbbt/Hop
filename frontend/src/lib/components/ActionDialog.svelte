@@ -1,16 +1,15 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
-  import type { FolderAction, Group, SaveActionInput } from "../bridge";
+  import type { FolderAction, SaveActionInput } from "../bridge";
   import Dialog from "./Dialog.svelte";
 
   // Creates or edits a folder action - a status-line button in the
   // keyboard-first layout that types its command into the focused pane
-  // (see FolderAction in bridge.ts).
-  export let groups: Group[] = [];
+  // while it's in one of the action's directories (see FolderAction in
+  // bridge.ts).
   export let editAction: FolderAction | null = null;
-  /** Pre-ticked folders for a new action - the active tab's own folder,
-   * when it has one. */
-  export let initialGroupIds: string[] = [];
+  /** Pre-filled directory for a new action - the focused pane's own. */
+  export let initialPath = "";
 
   const dispatch = createEventDispatcher<{
     save: SaveActionInput;
@@ -20,32 +19,28 @@
 
   let name = editAction?.name ?? "";
   let command = editAction?.command ?? "";
-  let selected = new Set(editAction?.groupIds ?? initialGroupIds);
+  let pathsText = (editAction?.paths ?? (initialPath ? [initialPath] : [])).join("\n");
+  let statusCommand = editAction?.statusCommand ?? "";
+  let stopName = editAction?.stopName ?? "";
+  let stopCommand = editAction?.stopCommand ?? "";
 
-  function folderPath(id: string): string {
-    const names: string[] = [];
-    let current: string | null = id;
-    while (current && names.length < 32) {
-      const group = groups.find((g) => g.id === current);
-      if (!group) break;
-      names.unshift(group.name);
-      current = group.parentId ?? null;
-    }
-    return names.join("/");
-  }
-
-  $: folders = groups.map((g) => ({ id: g.id, path: folderPath(g.id) })).sort((a, b) => a.path.localeCompare(b.path));
-  $: canSave = name.trim().length > 0 && command.trim().length > 0 && selected.size > 0;
-
-  function toggle(id: string) {
-    if (selected.has(id)) selected.delete(id);
-    else selected.add(id);
-    selected = selected;
-  }
+  $: paths = pathsText
+    .split("\n")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  $: canSave = name.trim().length > 0 && command.trim().length > 0 && paths.length > 0;
 
   function submit() {
     if (!canSave) return;
-    dispatch("save", { id: editAction?.id ?? null, name: name.trim(), command: command.trim(), groupIds: [...selected] });
+    dispatch("save", {
+      id: editAction?.id ?? null,
+      name: name.trim(),
+      command: command.trim(),
+      paths,
+      statusCommand: statusCommand.trim() || null,
+      stopName: stopName.trim() || null,
+      stopCommand: stopCommand.trim() || null,
+    });
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -58,7 +53,7 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<Dialog label={editAction ? "Edit action" : "New action"} width="380px" on:cancel={() => dispatch("cancel")}>
+<Dialog label={editAction ? "Edit action" : "New action"} width="420px" on:cancel={() => dispatch("cancel")}>
   <h2 class="title">{editAction ? "Edit action" : "New action"}</h2>
 
   <label class="field">
@@ -72,21 +67,40 @@
     <input type="text" class="mono" bind:value={command} placeholder="docker compose up" spellcheck="false" />
   </label>
 
-  <div class="field">
-    <span>Show in folders</span>
-    {#if folders.length}
-      <div class="folders">
-        {#each folders as folder (folder.id)}
-          <label class="folder">
-            <input type="checkbox" checked={selected.has(folder.id)} on:change={() => toggle(folder.id)} />
-            <span>{folder.path}</span>
-          </label>
-        {/each}
-      </div>
-      <span class="hint">Also shows for sessions in their subfolders.</span>
-    {:else}
-      <span class="hint">No folders yet - create one first ("New folder…" in the palette).</span>
-    {/if}
+  <label class="field">
+    <span>Show in directories (one per line)</span>
+    <textarea class="mono" rows="3" bind:value={pathsText} placeholder="~/projects/app" spellcheck="false"></textarea>
+    <span class="hint">Also shows in their subdirectories. <code>~</code> is the pane's home, local or over SSH.</span>
+  </label>
+
+  <label class="field">
+    <span>Running check (optional)</span>
+    <input
+      type="text"
+      class="mono"
+      bind:value={statusCommand}
+      placeholder="docker compose ps --status running -q | grep -q ."
+      spellcheck="false"
+    />
+    <span class="hint">Runs in the background every few seconds, never in the terminal. Exit 0 means running.</span>
+  </label>
+
+  <div class="row" class:disabled={!statusCommand.trim()}>
+    <label class="field stop-name">
+      <span>While running</span>
+      <input type="text" bind:value={stopName} placeholder="stop" disabled={!statusCommand.trim()} />
+    </label>
+    <label class="field grow">
+      <span>Stop command</span>
+      <input
+        type="text"
+        class="mono"
+        bind:value={stopCommand}
+        placeholder="docker compose down"
+        spellcheck="false"
+        disabled={!statusCommand.trim()}
+      />
+    </label>
   </div>
 
   <div class="actions">
@@ -115,7 +129,8 @@
     color: var(--fg-secondary);
   }
 
-  input[type="text"] {
+  input[type="text"],
+  textarea {
     background: var(--surface-1);
     border: none;
     border-radius: var(--radius-sm);
@@ -123,40 +138,40 @@
     color: var(--fg-primary);
     font-size: 0.8rem;
   }
-  input[type="text"]:focus-visible {
+  textarea {
+    resize: vertical;
+  }
+  input[type="text"]:focus-visible,
+  textarea:focus-visible {
     box-shadow: 0 0 0 2px var(--accent);
   }
   .mono {
     font-family: var(--font-mono);
   }
 
-  .folders {
-    display: flex;
-    flex-direction: column;
-    max-height: 180px;
-    overflow-y: auto;
-    background: var(--surface-1);
-    border-radius: var(--radius-sm);
-    padding: 0.3rem 0;
-  }
-  .folder {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.2rem 0.5rem;
-    color: var(--fg-primary);
-    font-size: 0.78rem;
-    cursor: pointer;
-  }
-  .folder:hover {
-    background: var(--surface-3);
-  }
-  .folder input {
-    accent-color: var(--accent);
-    margin: 0;
-  }
   .hint {
     color: var(--fg-tertiary);
+  }
+
+  .row {
+    display: flex;
+    gap: var(--space-2);
+  }
+  .row.disabled {
+    opacity: 0.5;
+  }
+  .stop-name {
+    width: 6.5rem;
+  }
+  .stop-name input {
+    min-width: 0;
+  }
+  .grow {
+    flex: 1;
+    min-width: 0;
+  }
+  .hint code {
+    font-family: var(--font-mono);
   }
 
   .actions {

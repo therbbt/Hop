@@ -79,12 +79,25 @@ corners and shadow.
 
 Folder actions add buttons to the keyboard-first layout's status line, e.g.
 a `start` button that runs `docker compose up`. Create one with "New folder
-action…" in the palette, then pick the folders it shows in (one or several).
-The button only appears while the active tab's saved session sits in one of
-those folders or a subfolder of one. Clicking it types the command plus Enter
-into the focused pane, so on an SSH tab it runs on that server.
+action…" in the palette and list the directories it belongs to (one or
+several, `~` allowed). The button only appears while the focused terminal is
+`cd`'d into one of them or a subdirectory. Clicking it types the command plus
+Enter into that terminal, so on an SSH tab it runs on that server.
 Right-clicking a button edits it, and "Run folder action…" in the palette runs
-one without the mouse.
+one without the mouse. A local shell's directory is followed on its own (on
+Linux); elsewhere, and over SSH, Hop reads it from the shell's OSC 7 report
+or from a `user@host:dir` window title, which most distros' default bash
+prompt sets. Over SSH, `~` stands for `/home/<user>` (`/root` for root).
+
+An action can also have a running check, e.g. `docker compose ps --status
+running -q | grep -q .`, which Hop runs every 5 seconds in the background
+and never in the terminal: a local tab runs it with its own shell, and an
+SSH tab runs it on a separate channel over the connection that's already
+open. A dot on the button shows the result: filled while the check exits 0,
+grey otherwise, hollow until it has an answer. Give the action a stop
+command too (e.g. `docker compose down`) and, while the check says running,
+the button becomes a stop button (labelled "stop" unless you name it) that
+runs that instead.
 
 Hyprland has no `Alt+T` show/hide - launching `hop` again
 while it's running opens another window in the keyboard-first layout (like a

@@ -10,7 +10,7 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
-use hop_core::session::{Session, SessionError, SessionEvent, SessionState};
+use hop_core::session::{CommandRunner, Session, SessionError, SessionEvent, SessionState};
 
 /// Both fields are optional and empty by default — a bare `{}` (or the
 /// `None` sent for an ad-hoc "Local shell" tab) behaves exactly like the
@@ -103,6 +103,12 @@ impl Session for ShellSession {
             .take_writer()
             .map_err(|e| SessionError::Protocol(format!("failed to take pty writer: {e}")))?;
 
+        #[cfg(target_os = "linux")]
+        if let Some(pid) = child.process_id() {
+            let events = events.clone();
+            std::thread::spawn(move || watch_cwd(pid, events));
+        }
+
         self.master = Some(pair.master);
         self.writer = Some(Arc::new(Mutex::new(writer)));
         self.child = Some(child);
@@ -146,6 +152,48 @@ impl Session for ShellSession {
         self.master = None;
         Ok(())
     }
+
+    /// Runs commands with the same shell as `<shell> -c` - except for a
+    /// shell with arguments of its own (e.g. `wsl.exe -d Ubuntu`), where a
+    /// trailing `-c` wouldn't mean what it does to a plain shell.
+    #[cfg(unix)]
+    fn command_runner(&self) -> Option<Arc<dyn CommandRunner>> {
+        if self.options.shell_args.as_ref().is_some_and(|a| !a.is_empty()) {
+            return None;
+        }
+        let shell = self.options.shell_command.clone().unwrap_or_else(default_shell);
+        Some(Arc::new(LocalRunner { shell }))
+    }
+}
+
+#[cfg(unix)]
+struct LocalRunner {
+    shell: String,
+}
+
+#[cfg(unix)]
+#[async_trait]
+impl CommandRunner for LocalRunner {
+    async fn run(&self, command: &str, cwd: &str) -> Result<i32, SessionError> {
+        let cwd = match (cwd.strip_prefix('~'), std::env::var("HOME")) {
+            (Some(rest), Ok(home)) if rest.is_empty() || rest.starts_with('/') => format!("{home}{rest}"),
+            _ => cwd.to_string(),
+        };
+        let status = tokio::process::Command::new(&self.shell)
+            .arg("-c")
+            .arg(command)
+            .current_dir(cwd)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            // The caller times a check out by dropping this future; don't
+            // leave the process running behind it.
+            .kill_on_drop(true)
+            .status()
+            .await?;
+        // No code means a signal killed it - not a "yes" either way.
+        Ok(status.code().unwrap_or(-1))
+    }
 }
 
 fn read_loop(mut reader: Box<dyn Read + Send>, events: mpsc::UnboundedSender<SessionEvent>) {
@@ -167,6 +215,27 @@ fn read_loop(mut reader: Box<dyn Read + Send>, events: mpsc::UnboundedSender<Ses
     }
     let _ = events.send(SessionEvent::StateChanged { state: SessionState::Disconnected });
     let _ = events.send(SessionEvent::Closed { reason: None });
+}
+
+/// Reports the shell's working directory whenever it changes, read from
+/// `/proc/<pid>/cwd` - so it follows every `cd` without the shell needing
+/// any prompt setup of its own. Polled because nothing announces a `cd`;
+/// stops once the shell is gone (the link no longer resolves) or nobody is
+/// listening anymore.
+#[cfg(target_os = "linux")]
+fn watch_cwd(pid: u32, events: mpsc::UnboundedSender<SessionEvent>) {
+    let link = format!("/proc/{pid}/cwd");
+    let mut last: Option<std::path::PathBuf> = None;
+    while let Ok(cwd) = std::fs::read_link(&link) {
+        if last.as_ref() != Some(&cwd) {
+            let path = cwd.to_string_lossy().into_owned();
+            if events.send(SessionEvent::CwdChanged { path }).is_err() {
+                break;
+            }
+            last = Some(cwd);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
 }
 
 fn default_shell() -> String {

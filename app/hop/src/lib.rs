@@ -70,6 +70,7 @@ pub fn run() {
             commands::reorder_group,
             commands::save_action,
             commands::delete_action,
+            commands::run_status_check,
             commands::sftp_connect,
             commands::sftp_list,
             commands::sftp_read_file,

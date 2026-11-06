@@ -13,6 +13,8 @@ export type SessionState = "connecting" | "connected" | "disconnected";
 export type SessionEvent =
   | { type: "data"; data: number[] }
   | { type: "title_changed"; title: string }
+  /** A local shell's working directory changed (Linux only, see hop-shell). */
+  | { type: "cwd_changed"; path: string }
   | { type: "state_changed"; state: SessionState }
   | { type: "closed"; reason: string | null }
   | { type: "error"; message: string }
@@ -239,14 +241,19 @@ export interface Theme {
 }
 
 /** A status-line button in the keyboard-first layout - see hop-core's
- * `FolderAction`. Shows while the active tab's saved session is in one of
- * `groupIds` (or a subfolder of one); clicking types `command` + Enter into
- * the focused pane. */
+ * `FolderAction`. Shows while the focused pane's working directory is one
+ * of `paths` (or inside one; `~` is the pane's home); clicking types
+ * `command` + Enter into that pane. With a `statusCommand` it also shows
+ * whether what it started is running, and while it is, turns into a
+ * `stopName` button running `stopCommand` (when one is set). */
 export interface FolderAction {
   id: string;
   name: string;
   command: string;
-  groupIds: string[];
+  paths: string[];
+  statusCommand?: string | null;
+  stopName?: string | null;
+  stopCommand?: string | null;
 }
 
 export interface HopConfig {
@@ -360,7 +367,10 @@ export interface SaveActionInput {
   id?: string | null;
   name: string;
   command: string;
-  groupIds: string[];
+  paths: string[];
+  statusCommand: string | null;
+  stopName: string | null;
+  stopCommand: string | null;
 }
 
 export async function saveAction(input: SaveActionInput): Promise<HopConfig> {
@@ -369,6 +379,13 @@ export async function saveAction(input: SaveActionInput): Promise<HopConfig> {
 
 export async function deleteAction(actionId: string): Promise<HopConfig> {
   return invoke<HopConfig>("delete_action", { actionId });
+}
+
+/** Runs a status check in `cwd` next to a session - never in its terminal -
+ * and resolves to its exit code. Rejects when the session can't run
+ * commands, or the check timed out. */
+export async function runStatusCheck(sessionId: string, command: string, cwd: string): Promise<number> {
+  return invoke<number>("run_status_check", { sessionId, command, cwd });
 }
 
 /** Pulls a saved session's password/passphrase back out of the keychain.
@@ -542,6 +559,7 @@ export async function subscribeSession(
   const kinds: Array<[string, (payload: unknown) => SessionEvent]> = [
     ["data", (p) => p as SessionEvent],
     ["title", (p) => p as SessionEvent],
+    ["cwd", (p) => p as SessionEvent],
     ["state", (p) => p as SessionEvent],
     ["closed", (p) => p as SessionEvent],
     ["error", (p) => p as SessionEvent],

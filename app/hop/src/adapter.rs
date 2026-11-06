@@ -5,12 +5,13 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use bytes::Bytes;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
-use hop_core::session::{Session, SessionEvent};
+use hop_core::session::{CommandRunner, Session, SessionEvent};
 
 pub enum SessionCommand {
     Write(Bytes),
@@ -21,7 +22,13 @@ pub enum SessionCommand {
 #[derive(Clone, Default)]
 pub struct AppState {
     sessions: Arc<Mutex<HashMap<String, mpsc::UnboundedSender<SessionCommand>>>>,
+    /// Each live session's `CommandRunner`, if its protocol has one.
+    runners: Arc<Mutex<HashMap<String, Arc<dyn CommandRunner>>>>,
 }
+
+/// How long a status check may run before it counts as unknown, so a hung
+/// command (or a dead connection) can't leave a button waiting forever.
+const RUN_TIMEOUT: Duration = Duration::from_secs(10);
 
 impl AppState {
     /// Construct a `Session` for `protocol` and hand it its own tokio task.
@@ -71,10 +78,12 @@ impl AppState {
         self.sessions.lock().unwrap().insert(id.clone(), cmd_tx);
 
         let sessions = self.sessions.clone();
+        let runners = self.runners.clone();
         let task_id = id.clone();
         tauri::async_runtime::spawn(async move {
-            run_session(session, cmd_rx, &app, &task_id).await;
+            run_session(session, cmd_rx, &app, &task_id, &runners).await;
             sessions.lock().unwrap().remove(&task_id);
+            runners.lock().unwrap().remove(&task_id);
         });
 
         Ok(id)
@@ -85,14 +94,39 @@ impl AppState {
         let tx = sessions.get(session_id).ok_or_else(|| "unknown session".to_string())?;
         tx.send(cmd).map_err(|_| "session already closed".to_string())
     }
+
+    /// Runs `command` in `cwd` next to the session (see `CommandRunner`)
+    /// and returns its exit code.
+    pub async fn run_command(&self, session_id: &str, command: &str, cwd: &str) -> Result<i32, String> {
+        let runner = self
+            .runners
+            .lock()
+            .unwrap()
+            .get(session_id)
+            .cloned()
+            .ok_or_else(|| "session can't run commands".to_string())?;
+        tokio::time::timeout(RUN_TIMEOUT, runner.run(command, cwd))
+            .await
+            .map_err(|_| "command timed out".to_string())?
+            .map_err(|e| e.to_string())
+    }
 }
 
-async fn run_session(mut session: Box<dyn Session>, mut cmd_rx: mpsc::UnboundedReceiver<SessionCommand>, app: &AppHandle, id: &str) {
+async fn run_session(
+    mut session: Box<dyn Session>,
+    mut cmd_rx: mpsc::UnboundedReceiver<SessionCommand>,
+    app: &AppHandle,
+    id: &str,
+    runners: &Mutex<HashMap<String, Arc<dyn CommandRunner>>>,
+) {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
     if let Err(e) = session.start(event_tx).await {
         emit(app, id, &SessionEvent::Error { message: e.to_string() });
         emit(app, id, &SessionEvent::Closed { reason: Some(e.to_string()) });
         return;
+    }
+    if let Some(runner) = session.command_runner() {
+        runners.lock().unwrap().insert(id.to_string(), runner);
     }
 
     loop {
@@ -138,6 +172,7 @@ fn emit(app: &AppHandle, id: &str, event: &SessionEvent) {
     let kind = match event {
         SessionEvent::Data { .. } => "data",
         SessionEvent::TitleChanged { .. } => "title",
+        SessionEvent::CwdChanged { .. } => "cwd",
         SessionEvent::StateChanged { .. } => "state",
         SessionEvent::Closed { .. } => "closed",
         SessionEvent::Error { .. } => "error",

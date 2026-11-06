@@ -16,6 +16,9 @@ export interface PaneState {
   shellNumber?: number;
   /** Once the user renames a pane, session-driven title updates stop overwriting it. */
   renamed?: boolean;
+  /** The pane's working directory as last reported (see cwd.ts) - may still
+   * start with `~` when it came from a window title. */
+  cwd?: string;
 }
 
 export type SplitDirection = "row" | "column";
