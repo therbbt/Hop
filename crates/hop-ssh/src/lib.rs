@@ -20,7 +20,7 @@ use russh::{Channel, ChannelMsg, Disconnect};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
-use hop_core::session::{Session, SessionError, SessionEvent, SessionState};
+use hop_core::session::{CommandRunner, Session, SessionError, SessionEvent, SessionState};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
@@ -97,11 +97,12 @@ enum SshCommand {
 pub struct SshSession {
     options: SshConnectOptions,
     cmd_tx: Option<mpsc::UnboundedSender<SshCommand>>,
+    handle: Option<Arc<Handle<HostKeyVerifier>>>,
 }
 
 impl SshSession {
     pub fn new(options: SshConnectOptions) -> Self {
-        Self { options, cmd_tx: None }
+        Self { options, cmd_tx: None, handle: None }
     }
 }
 
@@ -111,7 +112,10 @@ impl Session for SshSession {
         let _ = events.send(SessionEvent::StateChanged { state: SessionState::Connecting });
 
         let opts = self.options.clone();
-        let handle = connect(&opts, Some(events.clone())).await?;
+        // Shared with `command_runner`, which opens channels of its own on
+        // this same connection.
+        let handle = Arc::new(connect(&opts, Some(events.clone())).await?);
+        self.handle = Some(handle.clone());
 
         let channel = handle
             .channel_open_session()
@@ -133,9 +137,9 @@ impl Session for SshSession {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         self.cmd_tx = Some(cmd_tx);
 
-        // `handle` is moved in here too: dropping it would tear the
-        // connection down, so it has to live exactly as long as the channel
-        // does, on the one task that owns both.
+        // `handle` goes in here too, so the connection is torn down when
+        // the shell channel ends - even while a status check still holds
+        // its own copy of the handle.
         tokio::spawn(run_channel(handle, channel, cmd_rx, events));
 
         Ok(())
@@ -155,7 +159,53 @@ impl Session for SshSession {
         if let Some(tx) = self.cmd_tx.take() {
             let _ = tx.send(SshCommand::Shutdown);
         }
+        self.handle = None;
         Ok(())
+    }
+
+    fn command_runner(&self) -> Option<Arc<dyn CommandRunner>> {
+        let handle = self.handle.clone()?;
+        Some(Arc::new(ExecRunner { handle }))
+    }
+}
+
+/// Runs each command on its own exec channel over the session's existing
+/// connection - no second login, and nothing shows up in the terminal.
+struct ExecRunner {
+    handle: Arc<Handle<HostKeyVerifier>>,
+}
+
+#[async_trait]
+impl CommandRunner for ExecRunner {
+    async fn run(&self, command: &str, cwd: &str) -> Result<i32, SessionError> {
+        let mut channel = self
+            .handle
+            .channel_open_session()
+            .await
+            .map_err(|e| SessionError::Protocol(format!("failed to open channel: {e}")))?;
+        channel
+            .exec(true, format!("cd {} && {command}", shell_quote_path(cwd)))
+            .await
+            .map_err(|e| SessionError::Protocol(format!("exec failed: {e}")))?;
+        while let Some(msg) = channel.wait().await {
+            if let ChannelMsg::ExitStatus { exit_status } = msg {
+                return Ok(exit_status as i32);
+            }
+        }
+        Err(SessionError::Protocol("channel closed without an exit status".into()))
+    }
+}
+
+/// Single-quotes `path` for a POSIX shell, leaving a leading `~` outside the
+/// quotes so the remote shell still expands it - a directory read from a
+/// prompt's window title is often written that way (see the frontend's
+/// cwd.ts).
+fn shell_quote_path(path: &str) -> String {
+    let quote = |s: &str| format!("'{}'", s.replace('\'', "'\\''"));
+    match path.strip_prefix('~') {
+        Some("") => "~".to_string(),
+        Some(rest) if rest.starts_with('/') => format!("~/{}", quote(&rest[1..])),
+        _ => quote(path),
     }
 }
 
@@ -186,7 +236,7 @@ async fn authenticate(handle: &mut Handle<HostKeyVerifier>, opts: &SshConnectOpt
 /// Tauri adapter, kept local here so the app crate never has to know a
 /// channel exists.
 async fn run_channel(
-    handle: Handle<HostKeyVerifier>,
+    handle: Arc<Handle<HostKeyVerifier>>,
     mut channel: Channel<client::Msg>,
     mut cmd_rx: mpsc::UnboundedReceiver<SshCommand>,
     events: mpsc::UnboundedSender<SessionEvent>,

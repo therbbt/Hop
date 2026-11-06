@@ -58,6 +58,13 @@
     if (ref && "sendInput" in ref) ref.sendInput(text);
   }
 
+  /** A terminal pane's live backend session id (null for RDP, or while
+   * disconnected). */
+  export function paneSessionId(paneId: string): string | null {
+    const ref = paneRefs[paneId];
+    return ref && "getSessionId" in ref ? ref.getSessionId() : null;
+  }
+
   // Pure percentage math, recomputed whenever the tree shape or sizes
   // change — deliberately NOT what drives which Terminal/RdpView components
   // exist. Those render from a flat {#each} keyed only by paneId (below),

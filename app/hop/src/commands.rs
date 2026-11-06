@@ -364,13 +364,31 @@ pub fn set_group_slug(group_id: Uuid, slug: Option<String>) -> Result<Config, St
 // --- Folder actions ------------------------------------------------------
 // Status-line buttons in the keyboard-first layout — see `FolderAction`.
 
-/// Creates or replaces a folder action.
+/// Creates or replaces a folder action. The last three are optional (blank
+/// means unset) and only mean anything together - see `FolderAction`.
 #[tauri::command]
-pub fn save_action(id: Option<Uuid>, name: String, command: String, paths: Vec<String>) -> Result<Config, String> {
+pub fn save_action(
+    id: Option<Uuid>,
+    name: String,
+    command: String,
+    paths: Vec<String>,
+    status_command: Option<String>,
+    stop_name: Option<String>,
+    stop_command: Option<String>,
+) -> Result<Config, String> {
     let _guard = hop_core::config::LOCK.lock().unwrap();
     let id = id.unwrap_or_else(Uuid::new_v4);
     let mut config = hop_core::config::load().map_err(|e| e.to_string())?;
-    let action = FolderAction { id, name, command, paths };
+    let non_blank = |s: Option<String>| s.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let action = FolderAction {
+        id,
+        name,
+        command,
+        paths,
+        status_command: non_blank(status_command),
+        stop_name: non_blank(stop_name),
+        stop_command: non_blank(stop_command),
+    };
     match config.actions.iter_mut().find(|a| a.id == id) {
         Some(existing) => *existing = action,
         None => config.actions.push(action),
@@ -386,6 +404,19 @@ pub fn delete_action(action_id: Uuid) -> Result<Config, String> {
     config.actions.retain(|a| a.id != action_id);
     hop_core::config::save(&config).map_err(|e| e.to_string())?;
     Ok(config)
+}
+
+/// Runs a folder action's status check next to the session (never in its
+/// terminal) and returns the exit code: 0 means the action's thing is
+/// running.
+#[tauri::command]
+pub async fn run_status_check(
+    session_id: String,
+    command: String,
+    cwd: String,
+    state: State<'_, AppState>,
+) -> Result<i32, String> {
+    state.run_command(&session_id, &command, &cwd).await
 }
 
 // --- SFTP --------------------------------------------------------------

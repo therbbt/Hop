@@ -444,6 +444,12 @@
     if (sessionId) void writeSession(sessionId, new TextEncoder().encode(text));
   }
 
+  /** The live backend session's id, for running commands next to it (a
+   * folder action's status check); null while disconnected. */
+  export function getSessionId(): string | null {
+    return sessionId;
+  }
+
   // Becoming the visible tab can reveal a stale size (it was 0x0 while
   // hidden) — fit() corrects the cell grid, but xterm.js also positions a
   // hidden <textarea> (its real keyboard-input target, kept aligned with
@@ -522,6 +528,7 @@
   .terminal-host :global(.xterm) {
     height: 100%;
     padding: var(--terminal-padding, var(--space-2));
+    padding-bottom: var(--terminal-padding-bottom, var(--terminal-padding, var(--space-2)));
   }
   /* xterm.js keeps a hidden <textarea> (its real keyboard-input target,
      positioned over the cursor cell for IME support) that's supposed to be

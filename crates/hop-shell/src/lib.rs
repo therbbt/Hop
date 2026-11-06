@@ -10,7 +10,7 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
-use hop_core::session::{Session, SessionError, SessionEvent, SessionState};
+use hop_core::session::{CommandRunner, Session, SessionError, SessionEvent, SessionState};
 
 /// Both fields are optional and empty by default — a bare `{}` (or the
 /// `None` sent for an ad-hoc "Local shell" tab) behaves exactly like the
@@ -151,6 +151,48 @@ impl Session for ShellSession {
         self.writer = None;
         self.master = None;
         Ok(())
+    }
+
+    /// Runs commands with the same shell as `<shell> -c` - except for a
+    /// shell with arguments of its own (e.g. `wsl.exe -d Ubuntu`), where a
+    /// trailing `-c` wouldn't mean what it does to a plain shell.
+    #[cfg(unix)]
+    fn command_runner(&self) -> Option<Arc<dyn CommandRunner>> {
+        if self.options.shell_args.as_ref().is_some_and(|a| !a.is_empty()) {
+            return None;
+        }
+        let shell = self.options.shell_command.clone().unwrap_or_else(default_shell);
+        Some(Arc::new(LocalRunner { shell }))
+    }
+}
+
+#[cfg(unix)]
+struct LocalRunner {
+    shell: String,
+}
+
+#[cfg(unix)]
+#[async_trait]
+impl CommandRunner for LocalRunner {
+    async fn run(&self, command: &str, cwd: &str) -> Result<i32, SessionError> {
+        let cwd = match (cwd.strip_prefix('~'), std::env::var("HOME")) {
+            (Some(rest), Ok(home)) if rest.is_empty() || rest.starts_with('/') => format!("{home}{rest}"),
+            _ => cwd.to_string(),
+        };
+        let status = tokio::process::Command::new(&self.shell)
+            .arg("-c")
+            .arg(command)
+            .current_dir(cwd)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            // The caller times a check out by dropping this future; don't
+            // leave the process running behind it.
+            .kill_on_drop(true)
+            .status()
+            .await?;
+        // No code means a signal killed it - not a "yes" either way.
+        Ok(status.code().unwrap_or(-1))
     }
 }
 

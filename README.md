@@ -89,6 +89,16 @@ Linux); elsewhere, and over SSH, Hop reads it from the shell's OSC 7 report
 or from a `user@host:dir` window title, which most distros' default bash
 prompt sets. Over SSH, `~` stands for `/home/<user>` (`/root` for root).
 
+An action can also have a running check, e.g. `docker compose ps --status
+running -q | grep -q .`, which Hop runs every 5 seconds in the background
+and never in the terminal: a local tab runs it with its own shell, and an
+SSH tab runs it on a separate channel over the connection that's already
+open. A dot on the button shows the result: filled while the check exits 0,
+grey otherwise, hollow until it has an answer. Give the action a stop
+command too (e.g. `docker compose down`) and, while the check says running,
+the button becomes a stop button (labelled "stop" unless you name it) that
+runs that instead.
+
 Hyprland has no `Alt+T` show/hide - launching `hop` again
 while it's running opens another window in the keyboard-first layout (like a
 terminal), or brings the main one back from the tray. On Omarchy, make it the

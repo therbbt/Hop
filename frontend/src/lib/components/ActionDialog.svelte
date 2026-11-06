@@ -20,6 +20,9 @@
   let name = editAction?.name ?? "";
   let command = editAction?.command ?? "";
   let pathsText = (editAction?.paths ?? (initialPath ? [initialPath] : [])).join("\n");
+  let statusCommand = editAction?.statusCommand ?? "";
+  let stopName = editAction?.stopName ?? "";
+  let stopCommand = editAction?.stopCommand ?? "";
 
   $: paths = pathsText
     .split("\n")
@@ -29,7 +32,15 @@
 
   function submit() {
     if (!canSave) return;
-    dispatch("save", { id: editAction?.id ?? null, name: name.trim(), command: command.trim(), paths });
+    dispatch("save", {
+      id: editAction?.id ?? null,
+      name: name.trim(),
+      command: command.trim(),
+      paths,
+      statusCommand: statusCommand.trim() || null,
+      stopName: stopName.trim() || null,
+      stopCommand: stopCommand.trim() || null,
+    });
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -42,7 +53,7 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<Dialog label={editAction ? "Edit action" : "New action"} width="380px" on:cancel={() => dispatch("cancel")}>
+<Dialog label={editAction ? "Edit action" : "New action"} width="420px" on:cancel={() => dispatch("cancel")}>
   <h2 class="title">{editAction ? "Edit action" : "New action"}</h2>
 
   <label class="field">
@@ -61,6 +72,36 @@
     <textarea class="mono" rows="3" bind:value={pathsText} placeholder="~/projects/app" spellcheck="false"></textarea>
     <span class="hint">Also shows in their subdirectories. <code>~</code> is the pane's home, local or over SSH.</span>
   </label>
+
+  <label class="field">
+    <span>Running check (optional)</span>
+    <input
+      type="text"
+      class="mono"
+      bind:value={statusCommand}
+      placeholder="docker compose ps --status running -q | grep -q ."
+      spellcheck="false"
+    />
+    <span class="hint">Runs in the background every few seconds, never in the terminal. Exit 0 means running.</span>
+  </label>
+
+  <div class="row" class:disabled={!statusCommand.trim()}>
+    <label class="field stop-name">
+      <span>While running</span>
+      <input type="text" bind:value={stopName} placeholder="stop" disabled={!statusCommand.trim()} />
+    </label>
+    <label class="field grow">
+      <span>Stop command</span>
+      <input
+        type="text"
+        class="mono"
+        bind:value={stopCommand}
+        placeholder="docker compose down"
+        spellcheck="false"
+        disabled={!statusCommand.trim()}
+      />
+    </label>
+  </div>
 
   <div class="actions">
     {#if editAction}
@@ -110,6 +151,24 @@
 
   .hint {
     color: var(--fg-tertiary);
+  }
+
+  .row {
+    display: flex;
+    gap: var(--space-2);
+  }
+  .row.disabled {
+    opacity: 0.5;
+  }
+  .stop-name {
+    width: 6.5rem;
+  }
+  .stop-name input {
+    min-width: 0;
+  }
+  .grow {
+    flex: 1;
+    min-width: 0;
   }
   .hint code {
     font-family: var(--font-mono);

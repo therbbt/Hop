@@ -130,3 +130,40 @@ async fn shell_session_reports_cwd_changes() {
 
     session.shutdown().await.expect("shutdown failed");
 }
+
+/// The command runner runs out of band, in the given directory, and hands
+/// back the exit code - what a folder action's status check relies on.
+#[cfg(unix)]
+#[tokio::test]
+async fn shell_session_runs_commands_out_of_band() {
+    let dir = std::env::temp_dir().join(format!("hop-runner-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    std::fs::write(dir.join("marker"), "").expect("write marker");
+    let cwd = dir.to_string_lossy().into_owned();
+
+    let mut session = ShellSession::new(ShellConnectOptions { shell_command: Some("/bin/sh".to_string()), ..Default::default() });
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    session.start(tx).await.expect("session failed to start");
+    wait_for_state(&mut rx, SessionState::Connected).await;
+
+    let runner = session.command_runner().expect("a local shell should have a command runner");
+    assert_eq!(runner.run("test -f marker", &cwd).await.expect("run failed"), 0);
+    assert_eq!(runner.run("test -f missing", &cwd).await.expect("run failed"), 1);
+    assert_eq!(runner.run("exit 7", &cwd).await.expect("run failed"), 7);
+
+    session.shutdown().await.expect("shutdown failed");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A shell launched with arguments of its own (e.g. `wsl.exe -d Ubuntu`)
+/// gets no runner: `<shell> <args> -c ...` wouldn't mean what it does to a
+/// plain shell.
+#[tokio::test]
+async fn shell_with_args_has_no_command_runner() {
+    let session = ShellSession::new(ShellConnectOptions {
+        shell_command: Some("/bin/sh".to_string()),
+        shell_args: Some(vec!["-l".to_string()]),
+        ..Default::default()
+    });
+    assert!(session.command_runner().is_none());
+}

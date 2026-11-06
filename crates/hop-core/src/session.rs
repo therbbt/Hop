@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -22,6 +24,23 @@ pub trait Session: Send {
 
     /// Tear the session down and release its resources.
     async fn shutdown(&mut self) -> Result<(), SessionError>;
+
+    /// A way to run one-off commands where this session's shell runs,
+    /// without typing them into it — e.g. a folder action's status check.
+    /// Asked for once, after `start` succeeds; `None` for protocols with no
+    /// shell to run commands in.
+    fn command_runner(&self) -> Option<Arc<dyn CommandRunner>> {
+        None
+    }
+}
+
+/// Runs a command out of band, next to a session rather than inside it: a
+/// local process for a local shell, a separate exec channel for SSH.
+#[async_trait]
+pub trait CommandRunner: Send + Sync {
+    /// Runs `command` in the directory `cwd` and returns its exit code.
+    /// Output is discarded.
+    async fn run(&self, command: &str, cwd: &str) -> Result<i32, SessionError>;
 }
 
 /// Events flow one direction: protocol crate -> event bridge -> frontend.

@@ -52,6 +52,17 @@ pub struct FolderAction {
     pub command: String,
     #[serde(default)]
     pub paths: Vec<String>,
+    /// Exits 0 while what `command` starts is running (e.g. `docker compose
+    /// ps --status running -q | grep -q .`). Polled out of band to put a
+    /// running/stopped dot on the button.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status_command: Option<String>,
+    /// While the status check says running, the button shows this label
+    /// (default "stop") and runs `stop_command` instead of `command`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_command: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
