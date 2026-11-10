@@ -69,7 +69,8 @@ AppImages), so re-run the script to update.
 Under Hyprland, Hop runs natively on Wayland, lets the compositor
 manage the window, and switches to a keyboard-first layout: no title bar,
 buttons or sidebar, just the terminal and a slim tab line once two or more
-tabs are open. Everything is a hotkey (`Ctrl+Shift+H` lists them), and
+tabs are open (its `×` closes a tab, and right-clicking one offers
+Reconnect once its session has dropped). Everything is a hotkey (`Ctrl+Shift+H` lists them), and
 `Ctrl+Shift+P` opens a command palette that searches saved sessions, open
 tabs and every action, including managing sessions and folders. Settings →
 Terminal → Keyboard-first layout turns it on or off on any desktop; off a
