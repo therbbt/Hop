@@ -359,6 +359,15 @@
         term.selectAll();
         return false;
       }
+      // Copy: Ctrl+Shift+C (what Omarchy's Super+C sends Hop) or the older
+      // Ctrl+Insert (what it sends terminals it knows). Neither means
+      // anything to the shell, so they're swallowed even with no selection.
+      const copyKey =
+        event.ctrlKey && !event.altKey && (event.shiftKey ? event.key.toLowerCase() === "c" : event.key === "Insert");
+      if (copyKey) {
+        if (event.type === "keydown" && term.hasSelection()) void navigator.clipboard.writeText(term.getSelection());
+        return false;
+      }
       // App shortcuts (see shortcuts.ts) are handled by App.svelte's window
       // listener - don't also send them to the shell.
       if (matchShortcut(event)) return false;
