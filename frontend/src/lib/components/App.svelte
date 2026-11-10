@@ -1039,6 +1039,20 @@
     return names.join("/");
   }
 
+  // How a session's folder reads in palette details: the folder's slug
+  // (the nearest one up the chain, as on tabs) when it has one, since
+  // that's the short tag the user picked for it; its path otherwise.
+  function sessionFolderLabel(groupId: string | null | undefined): string {
+    let id = groupId ?? null;
+    while (id) {
+      const group = groups.find((g) => g.id === id);
+      if (!group) break;
+      if (group.slug) return `[${group.slug}]`;
+      id = group.parentId ?? null;
+    }
+    return folderPath(groupId);
+  }
+
   function rootPaletteStep(): PaletteStep {
     const tabItems: PaletteItem[] = tabs.map((tab, i) => ({
       id: `tab:${tab.id}`,
@@ -1061,7 +1075,7 @@
   }
 
   function sessionDetail(session: SavedSession): string {
-    return [session.protocol, folderPath(session.groupId), openSessionTabs[session.id] && "open"].filter(Boolean).join(" · ");
+    return [session.protocol, sessionFolderLabel(session.groupId), openSessionTabs[session.id] && "open"].filter(Boolean).join(" · ");
   }
 
   /** Every saved session, open ones first. Picking an open one jumps to
@@ -1170,7 +1184,7 @@
       items: sessions.filter(include).map((s) => ({
         id: `pick:${s.id}`,
         label: s.name,
-        detail: [s.protocol, folderPath(s.groupId)].filter(Boolean).join(" · "),
+        detail: [s.protocol, sessionFolderLabel(s.groupId)].filter(Boolean).join(" · "),
         run: () => onPick(s),
       })),
     };
