@@ -1240,7 +1240,15 @@
   />
   {#if keyboardUi}
     {#if tabs.length > 1}
-      <SlimTabs tabs={tabSummaries} activeId={activeTabId} on:select={(e) => selectTab(e.detail.id)} />
+      <SlimTabs
+        tabs={tabSummaries}
+        activeId={activeTabId}
+        on:select={(e) => selectTab(e.detail.id)}
+        on:close={(e) => closeTab(e.detail.id)}
+        on:saveAs={(e) => onSaveTabAsSession(e.detail.id)}
+        on:reconnect={(e) => reconnectTab(e.detail.id)}
+        on:openContextMenu={(e) => (contextMenu = e.detail)}
+      />
     {/if}
   {:else}
     <div class="action-bar">
@@ -1346,7 +1354,8 @@
   {#if keyboardUi}
     <!-- Keyboard-first layout's status line: the folder actions for the
          focused terminal's directory, and where you are among the tabs. -->
-    <div class="status-line">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="status-line" on:contextmenu|preventDefault>
       {#if visibleActions.length}
         <span class="status-actions">
           {#each visibleActions as action (action.id)}

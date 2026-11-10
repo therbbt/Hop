@@ -100,6 +100,11 @@
       back();
     } else if (event.key === "Enter") {
       event.preventDefault();
+      // A picked item may open a dialog, which mounts before this event
+      // reaches the window - where the dialog's own Enter-to-connect
+      // listener would then take it (e.g. "Edit session…" connecting
+      // straight away instead of showing the form).
+      event.stopPropagation();
       submit();
     } else if (event.key === "ArrowDown" || (ctrl && (event.key === "n" || event.key === "j"))) {
       event.preventDefault();
