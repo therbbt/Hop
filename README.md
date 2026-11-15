@@ -64,7 +64,13 @@ sudo pacman -S --needed base-devel webkit2gtk-4.1 gtk3 librsvg libayatana-appind
 ```
 
 The in-app updater can't update this install (on Linux it only replaces
-AppImages), so re-run the script to update.
+AppImages), so Hop hides it there - re-run the script to update. For
+in-app updates instead, use the release AppImage (needs `fuse2`):
+
+```bash
+sudo pacman -S --needed fuse2
+install -Dm755 Hop_<version>_amd64.AppImage ~/.local/bin/hop
+```
 
 Under Hyprland, Hop runs natively on Wayland, lets the compositor
 manage the window, and switches to a keyboard-first layout: no title bar,

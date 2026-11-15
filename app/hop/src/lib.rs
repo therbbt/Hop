@@ -56,6 +56,7 @@ pub fn run() {
             commands::session_close,
             commands::ssh_trust_host_key,
             commands::get_config,
+            commands::can_self_update,
             commands::save_config,
             commands::list_serial_ports,
             commands::list_wsl_distros,
