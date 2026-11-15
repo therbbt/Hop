@@ -94,7 +94,7 @@ jobs:
     container:
       image: fedora:latest
     steps:
-      # Fedora container so the .deb/.rpm here are built against the same
+      # Fedora container so the .deb/.rpm/AppImage here are built against the same
       # dnf package set a real Fedora user would have, same reasoning as
       # matching a target distro's actual library versions rather than
       # whatever happens to be on the generic ubuntu-latest runner.
@@ -104,7 +104,7 @@ jobs:
             git gcc gcc-c++ make pkgconf-pkg-config \
             glib2-devel gtk3-devel webkit2gtk4.1-devel javascriptcoregtk4.1-devel \
             librsvg2-devel libappindicator-gtk3-devel systemd-devel \
-            rpm-build file curl
+            rpm-build file curl findutils squashfs-tools
 
       - uses: actions/checkout@v4
 
@@ -123,10 +123,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # The AppImage bundler runs linuxdeploy, itself an AppImage, and
+          # containers have no FUSE to mount it with - this makes it unpack
+          # itself and run from there instead.
+          APPIMAGE_EXTRACT_AND_RUN: '1'
         with:
           projectPath: app/hop
           tagName: ${{ github.ref_name }}
           releaseName: 'Hop ${{ github.ref_name }}'
           releaseDraft: true
           generateReleaseNotes: true
-          args: --bundles deb,rpm
+          # The AppImage is what makes Linux self-updating work: with one
+          # built, tauri-action points latest.json's plain linux-x86_64
+          # entry at it, which is the entry an install of unknown bundle
+          # type (a --no-bundle build) reads. Without it that entry pointed
+          # at the .deb, and the updater wrote the .deb over the binary.
+          args: --bundles deb,rpm,appimage

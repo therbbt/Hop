@@ -184,6 +184,7 @@
   // --- Auto-update -------------------------------------------------------
   const DISMISSED_UPDATE_VERSION_KEY = "hop.dismissedUpdateVersion";
   let availableUpdate: Update | null = null;
+  let canSelfUpdate = false;
   let updateDetailsOpen = false;
   let dismissedUpdateVersion: string | null =
     typeof window === "undefined" ? null : window.localStorage.getItem(DISMISSED_UPDATE_VERSION_KEY);
@@ -365,8 +366,10 @@
     newShellTab();
 
     // Just the main window - the keyboard-first layout's extra windows
-    // (see windows.rs) would each offer the same update again.
-    if (getCurrentWindow().label === "main") void checkForAppUpdate();
+    // (see windows.rs) would each offer the same update again. Skipped
+    // entirely where installing would break this copy (see can_self_update).
+    canSelfUpdate = await invoke<boolean>("can_self_update").catch(() => false);
+    if (canSelfUpdate && getCurrentWindow().label === "main") void checkForAppUpdate();
 
     isWindows = (await invoke<string>("platform_name").catch(() => "unknown")) === "windows";
   });
@@ -1486,6 +1489,7 @@
       activeThemeId={config.settings.activeThemeId}
       keyboardUi={config.settings.keyboardUi ?? null}
       onCheckForUpdate={checkForUpdateManually}
+      {canSelfUpdate}
       on:save={(e) => onSaveSettings(e.detail)}
       on:cancel={() => (showSettingsPanel = false)}
     />

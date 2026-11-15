@@ -14,6 +14,9 @@
    * if one's found) — this just triggers it and reports whether anything
    * came back, so this panel can show its own "you're up to date" message. */
   export let onCheckForUpdate: () => Promise<boolean>;
+  /** False for installs the updater would break (see can_self_update in
+   * commands.rs) — the button is swapped for a note instead. */
+  export let canSelfUpdate = true;
 
   const dispatch = createEventDispatcher<{
     save: {
@@ -747,13 +750,19 @@
           <div class="setting">
             <div class="setting-text">
               <span class="setting-label">{appVersion ? `Hop ${appVersion}` : "Hop"}</span>
-              {#if updateCheckMessage}
+              {#if !canSelfUpdate}
+                <span class="setting-detail">
+                  This install can't update itself — use the AppImage, or re-run scripts/install-linux-local.sh.
+                </span>
+              {:else if updateCheckMessage}
                 <span class="setting-detail">{updateCheckMessage}</span>
               {/if}
             </div>
-            <button class="btn" disabled={checkingForUpdate} on:click={checkForUpdates}>
-              {checkingForUpdate ? "Checking…" : "Check for updates"}
-            </button>
+            {#if canSelfUpdate}
+              <button class="btn" disabled={checkingForUpdate} on:click={checkForUpdates}>
+                {checkingForUpdate ? "Checking…" : "Check for updates"}
+              </button>
+            {/if}
           </div>
           {#if updateCheckError}
             <p class="setting-message error">{updateCheckError}</p>

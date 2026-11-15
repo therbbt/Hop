@@ -548,6 +548,36 @@ pub fn platform_name() -> &'static str {
     std::env::consts::OS
 }
 
+/// Whether the in-app updater can actually install an update over this
+/// copy of Hop. On Linux the updater picks its install method from the
+/// bundle type baked into the binary at bundle time: a .deb/.rpm build
+/// shells out to `dpkg -i`/`rpm -U`, and anything else - including a
+/// `--no-bundle` build from scripts/install-linux-local.sh - is treated as
+/// an AppImage and has the downloaded file written straight over it, which
+/// leaves a non-AppImage install unlaunchable. So only AppImages, and
+/// .deb/.rpm builds on a system that has that package manager, qualify.
+#[tauri::command]
+pub fn can_self_update() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        use tauri::utils::{config::BundleType, platform::bundle_type};
+        let has = |tool: &str| {
+            std::env::var_os("PATH")
+                .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(tool).is_file()))
+        };
+        match bundle_type() {
+            Some(BundleType::AppImage) => true,
+            Some(BundleType::Deb) => has("dpkg"),
+            Some(BundleType::Rpm) => has("rpm"),
+            _ => false,
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
+}
+
 /// Wayland gives a client no way to query its own absolute screen position
 /// (unlike X11) - tao's outer_position()/currentMonitor() math the frontend
 /// uses to detect a WM half-screen/quadrant tile snap reads GTK's
