@@ -40,7 +40,7 @@
       await relaunch();
     } catch (err) {
       installing = false;
-      errorMessage = err instanceof Error ? err.message : "Failed to install the update. Please try again later.";
+      errorMessage = err instanceof Error ? err.message : String(err);
     }
   }
 </script>
