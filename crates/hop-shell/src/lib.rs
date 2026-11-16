@@ -74,6 +74,12 @@ impl Session for ShellSession {
         // apps — can behave differently in a local tab than over SSH for
         // reasons that have nothing to do with the program itself.
         cmd.env("TERM", "xterm-256color");
+        for (key, value) in appimage_env_fixups() {
+            match value {
+                Some(value) => cmd.env(key, value),
+                None => cmd.env_remove(key),
+            }
+        }
         if let Some(args) = &self.options.shell_args {
             cmd.args(args);
         }
@@ -179,7 +185,14 @@ impl CommandRunner for LocalRunner {
             (Some(rest), Ok(home)) if rest.is_empty() || rest.starts_with('/') => format!("{home}{rest}"),
             _ => cwd.to_string(),
         };
-        let status = tokio::process::Command::new(&self.shell)
+        let mut cmd = tokio::process::Command::new(&self.shell);
+        for (key, value) in appimage_env_fixups() {
+            match value {
+                Some(value) => cmd.env(key, value),
+                None => cmd.env_remove(key),
+            };
+        }
+        let status = cmd
             .arg("-c")
             .arg(command)
             .current_dir(cwd)
@@ -238,6 +251,38 @@ fn watch_cwd(pid: u32, events: mpsc::UnboundedSender<SessionEvent>) {
     }
 }
 
+/// Env changes that undo what an AppImage's AppRun did to Hop's own env,
+/// for the shells Hop spawns. AppRun (and linuxdeploy's GTK hook) point
+/// LD_LIBRARY_PATH, XDG_DATA_DIRS, GTK_PATH, GIO_MODULE_DIR and friends
+/// into the AppImage's mount - Hop itself needs that, but a shell that
+/// inherits it hands it to everything run there, so e.g. another
+/// webkit2gtk app loads Hop's bundled webkit and dies looking for its
+/// helper processes. Entries under $APPDIR are dropped from every
+/// variable (removing it if nothing's left), plus the vars AppRun sets
+/// outright. Empty when not running as an AppImage.
+fn appimage_env_fixups() -> Vec<(String, Option<String>)> {
+    match std::env::var("APPDIR") {
+        Ok(appdir) if !appdir.is_empty() => env_fixups_for(&appdir, std::env::vars()),
+        _ => Vec::new(),
+    }
+}
+
+fn env_fixups_for(appdir: &str, vars: impl Iterator<Item = (String, String)>) -> Vec<(String, Option<String>)> {
+    let mut fixups: Vec<(String, Option<String>)> = ["APPDIR", "APPIMAGE", "ARGV0", "OWD", "GTK_THEME"]
+        .into_iter()
+        .map(|key| (key.to_string(), None))
+        .collect();
+    for (key, value) in vars {
+        if fixups.iter().any(|(k, _)| *k == key) || !value.contains(appdir) {
+            continue;
+        }
+        let kept: Vec<&str> =
+            value.split(':').filter(|entry| !entry.is_empty() && !entry.starts_with(appdir)).collect();
+        fixups.push((key, if kept.is_empty() { None } else { Some(kept.join(":")) }));
+    }
+    fixups
+}
+
 fn default_shell() -> String {
     #[cfg(unix)]
     {
@@ -246,5 +291,35 @@ fn default_shell() -> String {
     #[cfg(windows)]
     {
         std::env::var("COMSPEC").unwrap_or_else(|_| "powershell.exe".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn appimage_env_fixups_strip_the_mount() {
+        let appdir = "/tmp/.mount_hopJEPfbc";
+        let vars = [
+            ("LD_LIBRARY_PATH", "/tmp/.mount_hopJEPfbc/usr/lib/:/tmp/.mount_hopJEPfbc/lib/"),
+            ("XDG_DATA_DIRS", "/tmp/.mount_hopJEPfbc/usr/share/:/usr/share:/usr/local/share"),
+            ("GTK_EXE_PREFIX", "/tmp/.mount_hopJEPfbc//usr"),
+            ("GST_PLUGIN_SYSTEM_PATH", "/tmp/.mount_hopJEPfbc/usr/lib/gstreamer:"),
+            ("GTK_THEME", "Adwaita:dark"),
+            ("APPIMAGE", "/home/me/.local/bin/hop"),
+            ("HOME", "/home/me"),
+        ]
+        .map(|(k, v)| (k.to_string(), v.to_string()));
+        let fixups = env_fixups_for(appdir, vars.into_iter());
+        let get = |key: &str| fixups.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_deref());
+
+        assert_eq!(get("LD_LIBRARY_PATH"), Some(None));
+        assert_eq!(get("XDG_DATA_DIRS"), Some(Some("/usr/share:/usr/local/share")));
+        assert_eq!(get("GTK_EXE_PREFIX"), Some(None));
+        assert_eq!(get("GST_PLUGIN_SYSTEM_PATH"), Some(None));
+        assert_eq!(get("GTK_THEME"), Some(None));
+        assert_eq!(get("APPIMAGE"), Some(None));
+        assert_eq!(get("HOME"), None);
     }
 }

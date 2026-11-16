@@ -361,7 +361,7 @@
       // the changelog on top of this panel — nothing more to show here.
       if (!found) updateCheckMessage = "You're up to date.";
     } catch (err) {
-      updateCheckError = err instanceof Error ? err.message : "Failed to check for updates.";
+      updateCheckError = err instanceof Error ? err.message : String(err);
     } finally {
       checkingForUpdate = false;
     }
